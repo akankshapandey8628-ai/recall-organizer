@@ -1,0 +1,70 @@
+{% set TYPE_ICONS = {'note': '📝', 'link': '🔗', 'image': '🖼️', 'pdf': '📄'} %}
+<div class="item-card type-{{ item.type }}"
+     onclick="if(!event.target.closest('.img-zoom-btn') && !event.target.closest('.fav-star')) { window.location.href='{{ url_for('view_item', item_id=item.id) }}'; }">
+  <div class="card-type-bar"></div>
+
+  <div class="item-card-header">
+    <span class="item-type-badge badge-{{ item.type }}">
+      {{ TYPE_ICONS.get(item.type, '📌') }} {{ item.type }}
+    </span>
+    <button class="fav-star {% if item.favourite %}active{% endif %}"
+            data-item-id="{{ item.id }}"
+            title="Toggle favourite">
+      {% if item.favourite %}⭐{% else %}☆{% endif %}
+    </button>
+  </div>
+
+  {% if item.type == 'image' and item.filename %}
+  <div class="thumb-wrap">
+    <img class="item-thumb"
+         src="{{ url_for('uploaded_file', filename=item.filename) }}"
+         alt="{{ item.title }}" loading="lazy"/>
+    <button type="button" class="img-zoom-btn"
+            data-img-src="{{ url_for('uploaded_file', filename=item.filename) }}"
+            data-img-title="{{ item.title }}"
+            data-img-cat="{{ item.category }}"
+            title="Expand to Fullscreen (Google Photos style)"
+            onclick="event.stopPropagation(); openImageLightbox(this);">
+      🔍 Expand
+    </button>
+  </div>
+  {% endif %}
+
+  <div class="item-title" style="cursor:pointer;">{{ item.title }}</div>
+
+  {% if item.description %}
+  <div class="item-desc">{{ item.description }}</div>
+  {% elif item.content %}
+  <div class="item-desc" style="font-family:'JetBrains Mono',monospace;font-size:11px;">
+    {{ item.content[:160] }}{% if item.content|length > 160 %}…{% endif %}
+  </div>
+  {% elif item.url %}
+  <div class="item-desc" style="color:var(--accent-teal);font-size:11px;word-break:break-all;">
+    🔗 {{ item.url[:50] }}{% if item.url|length > 50 %}…{% endif %}
+  </div>
+  {% endif %}
+
+  {% if item.tags %}
+  <div class="item-tags">
+    {% for tag in item.tags[:3] %}
+    <span class="tag-chip">#{{ tag }}</span>
+    {% endfor %}
+    {% if item.tags|length > 3 %}
+    <span class="tag-chip">+{{ item.tags|length - 3 }}</span>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  <div class="item-meta">
+    <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+      <span class="cat-pill">{{ item.category }}</span>
+      {% if item.subcategory %}
+      <span class="cat-pill" style="opacity:0.85;border:1px dashed var(--accent-purple);font-size:10px;">{{ item.subcategory }}</span>
+      {% endif %}
+      {% if item.entities and item.entities.amounts %}
+      <span style="color:#2ed573;font-size:11px;font-weight:700;">{{ item.entities.amounts[0] }}</span>
+      {% endif %}
+    </div>
+    <span>{{ item.created_at[:10] }}</span>
+  </div>
+</div>

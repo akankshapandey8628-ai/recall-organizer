@@ -1,0 +1,283 @@
+{% extends "base.html" %}
+
+{% set TYPE_ICONS = {'note': '📝', 'link': '🔗', 'image': '🖼️', 'pdf': '📄'} %}
+
+{% block title %}{{ item.title }} — Recall{% endblock %}
+{% block page_title %}{{ item.title }}{% endblock %}
+{% block page_subtitle %}Saved {{ item.created_at[:10] }} · {{ item.type|capitalize }}{% endblock %}
+
+{% block content %}
+
+<!-- View Header -->
+<!-- Quick Breadcrumb / Navigation -->
+<div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;">
+  <a href="{{ url_for('index') }}" class="btn btn-secondary btn-sm" style="font-size:12px;padding:6px 14px;">
+    ← Back to Dashboard
+  </a>
+  <a href="{{ url_for('items', type=item.type) }}" class="btn btn-secondary btn-sm" style="font-size:12px;padding:6px 14px;">
+    View All {{ item.type|capitalize }}s →
+  </a>
+</div>
+
+<div class="view-header mb-24">
+  <div class="view-title-section">
+    <div class="view-title">{{ item.title }}</div>
+    <div class="view-meta">
+      <span class="item-type-badge badge-{{ item.type }}">
+        {{ TYPE_ICONS.get(item.type, '📌') }} {{ item.type }}
+      </span>
+      <span>📁 {{ item.category }}{% if item.subcategory %} <span style="color:var(--text-muted);">›</span> <strong style="color:var(--accent-purple);">{{ item.subcategory }}</strong>{% endif %}</span>
+      <span>🗓️ {{ item.created_at[:10] }}</span>
+      {% if item.updated_at != item.created_at %}
+      <span>✏️ Updated {{ item.updated_at[:10] }}</span>
+      {% endif %}
+      {% if item.favourite %}
+      <span style="color:#f7c948;">⭐ Favourite</span>
+      {% endif %}
+    </div>
+  </div>
+  <div class="view-actions" style="flex-wrap:wrap;">
+    <button class="fav-star {% if item.favourite %}active{% endif %} btn-icon"
+            data-item-id="{{ item.id }}"
+            title="Toggle favourite"
+            style="font-size:20px;">
+      {% if item.favourite %}⭐{% else %}☆{% endif %}
+    </button>
+    <a href="{{ url_for('edit_item', item_id=item.id) }}" class="btn-icon" title="Edit">✏️</a>
+    <form method="POST" action="{{ url_for('delete_item', item_id=item.id) }}" id="deleteFormSide">
+      <button type="button" class="btn-icon delete-trigger"
+              data-form-id="deleteFormSide" title="Delete" style="color:#f75c5c;">🗑️</button>
+    </form>
+  </div>
+</div>
+
+<!-- AI Extracted Intelligence Card (if any entities found) -->
+{% set ents = item.entities or {} %}
+{% if ents.dates or ents.amounts or ents.locations or ents.ids %}
+<div class="card mb-24" style="background:linear-gradient(135deg, rgba(124,92,252,0.12), rgba(0,210,180,0.08));border:1px solid rgba(124,92,252,0.3);border-radius:var(--radius-md);padding:18px 22px;">
+  <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;">
+    <span style="font-size:18px;">✨</span>
+    <span style="font-size:14px;font-weight:700;letter-spacing:0.5px;color:var(--text-primary);text-transform:uppercase;">AI Extracted Insights</span>
+  </div>
+  <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(200px, 1fr));gap:16px;">
+    
+    {% if ents.dates %}
+    <div>
+      <div style="font-size:12px;color:var(--text-muted);margin-bottom:6px;font-weight:600;">📅 DATES & DEADLINES</div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px;">
+        {% for d in ents.dates %}
+        <span style="display:inline-flex;align-items:center;gap:4px;padding:4px 10px;border-radius:12px;font-size:12px;font-weight:600;background:{% if d.is_future %}rgba(247,92,92,0.2);color:#ff7675;border:1px solid rgba(247,92,92,0.4);{% else %}rgba(255,255,255,0.06);color:var(--text-secondary);{% endif %}">
+          {% if d.is_future %}⏰ Due: {% endif %}{{ d.formatted or d.raw }}
+        </span>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+
+    {% if ents.amounts %}
+    <div>
+      <div style="font-size:12px;color:var(--text-muted);margin-bottom:6px;font-weight:600;">💰 AMOUNTS / PRICE</div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px;">
+        {% for amt in ents.amounts %}
+        <span style="display:inline-flex;align-items:center;padding:4px 10px;border-radius:12px;font-size:12px;font-weight:700;background:rgba(46,213,115,0.15);color:#2ed573;border:1px solid rgba(46,213,115,0.3);">
+          {{ amt }}
+        </span>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+
+    {% if ents.locations %}
+    <div>
+      <div style="font-size:12px;color:var(--text-muted);margin-bottom:6px;font-weight:600;">📍 LOCATIONS</div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px;">
+        {% for loc in ents.locations %}
+        <span style="display:inline-flex;align-items:center;padding:4px 10px;border-radius:12px;font-size:12px;font-weight:600;background:rgba(54,162,235,0.15);color:#70a1ff;border:1px solid rgba(54,162,235,0.3);">
+          📍 {{ loc }}
+        </span>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+
+    {% if ents.ids %}
+    <div>
+      <div style="font-size:12px;color:var(--text-muted);margin-bottom:6px;font-weight:600;">🔖 REFERENCE NUMBERS</div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px;">
+        {% for ref in ents.ids %}
+        <span style="display:inline-flex;align-items:center;padding:4px 10px;border-radius:12px;font-size:12px;font-weight:600;background:rgba(255,165,2,0.15);color:#ffa502;border:1px solid rgba(255,165,2,0.3);font-family:monospace;">
+          {{ ref.type }}: {{ ref.value }}
+        </span>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+
+  </div>
+</div>
+{% endif %}
+
+<!-- Description -->
+{% if item.description %}
+<div class="card mb-24" style="background:rgba(124,92,252,0.05);border-color:rgba(124,92,252,0.2);">
+  <p style="color:var(--text-secondary);font-size:15px;">{{ item.description }}</p>
+</div>
+{% endif %}
+
+<div class="view-body">
+  <!-- Main Content -->
+  <div>
+    {% if item.type == 'note' %}
+    <div class="content-box">
+      <h3 style="font-size:13px;color:var(--text-muted);margin-bottom:12px;text-transform:uppercase;letter-spacing:0.5px;">📝 Note</h3>
+      {% if item.content %}
+      <pre>{{ item.content }}</pre>
+      {% else %}
+      <p style="color:var(--text-muted);font-style:italic;">No content.</p>
+      {% endif %}
+    </div>
+
+    {% elif item.type == 'link' %}
+    <div class="content-box">
+      <h3 style="font-size:13px;color:var(--text-muted);margin-bottom:12px;text-transform:uppercase;letter-spacing:0.5px;">🔗 Link</h3>
+      <a href="{{ item.url }}" target="_blank" rel="noopener" class="link-preview">
+        🌐 {{ item.url }}
+        <span style="margin-left:auto;flex-shrink:0;font-size:12px;color:var(--text-muted);">↗ Open</span>
+      </a>
+      {% if item.content %}
+      <div style="margin-top:16px;">
+        <p style="font-size:12px;color:var(--text-muted);margin-bottom:8px;">Extracted text:</p>
+        <pre>{{ item.content }}</pre>
+      </div>
+      {% endif %}
+    </div>
+
+    {% elif item.type == 'image' %}
+    <div class="content-box">
+      <h3 style="font-size:13px;color:var(--text-muted);margin-bottom:12px;text-transform:uppercase;letter-spacing:0.5px;">🖼️ Image</h3>
+      {% if item.filename %}
+      <img src="{{ url_for('uploaded_file', filename=item.filename) }}"
+           alt="{{ item.title }}" class="view-image"/>
+      <div style="margin-top:12px;">
+        <a href="{{ url_for('uploaded_file', filename=item.filename) }}"
+           download class="btn btn-secondary btn-sm">⬇️ Download</a>
+      </div>
+      {% endif %}
+      {% if item.content %}
+      <div style="margin-top:20px;">
+        <h4 style="font-size:12px;color:var(--text-muted);margin-bottom:8px;text-transform:uppercase;letter-spacing:0.5px;">🔤 OCR Extracted Text</h4>
+        <pre style="max-height:400px;overflow-y:auto;">{{ item.content }}</pre>
+      </div>
+      {% else %}
+      <p style="color:var(--text-muted);font-style:italic;margin-top:12px;">No text detected in this image.</p>
+      {% endif %}
+    </div>
+
+    {% elif item.type == 'pdf' %}
+    <div class="content-box">
+      <h3 style="font-size:13px;color:var(--text-muted);margin-bottom:12px;text-transform:uppercase;letter-spacing:0.5px;">📄 PDF</h3>
+      {% if item.filename %}
+      <div style="display:flex;align-items:center;gap:12px;padding:16px;background:var(--bg-glass);border-radius:var(--radius-sm);margin-bottom:16px;">
+        <span style="font-size:32px;">📄</span>
+        <div>
+          <div style="font-weight:600;">{{ item.filename }}</div>
+          <div style="font-size:12px;color:var(--text-muted);">PDF Document</div>
+        </div>
+        <a href="{{ url_for('uploaded_file', filename=item.filename) }}"
+           download class="btn btn-secondary btn-sm" style="margin-left:auto;">⬇️ Download</a>
+      </div>
+      {% endif %}
+      {% if item.content %}
+      <h4 style="font-size:12px;color:var(--text-muted);margin-bottom:10px;text-transform:uppercase;letter-spacing:0.5px;">📃 Extracted Text</h4>
+      <pre style="max-height:400px;overflow-y:auto;">{{ item.content[:3000] }}{% if item.content|length > 3000 %}…{% endif %}</pre>
+      {% else %}
+      <p style="color:var(--text-muted);font-style:italic;font-size:14px;">No text could be extracted from this PDF.</p>
+      {% endif %}
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- Side Panel -->
+  <div class="detail-panel">
+    <!-- Tags -->
+    {% if item.tags %}
+    <div class="content-box card-sm">
+      <div class="detail-key" style="margin-bottom:10px;">🏷️ Tags</div>
+      <div class="item-tags">
+        {% for tag in item.tags %}
+        <a href="{{ url_for('items') }}?q={{ tag|urlencode }}" class="tag-chip" style="text-decoration:none;">
+          #{{ tag }}
+        </a>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+
+    <!-- Details -->
+    <div class="content-box card-sm">
+      <div class="detail-key" style="margin-bottom:14px;">📋 Details</div>
+      <div style="display:flex;flex-direction:column;gap:12px;">
+        <div class="detail-row">
+          <span class="detail-key">Type</span>
+          <span class="detail-val">{{ item.type|capitalize }}</span>
+        </div>
+        <div class="detail-row">
+          <span class="detail-key">Category</span>
+          <span class="detail-val">
+            <a href="{{ url_for('items') }}?category={{ item.category|urlencode }}"
+               style="color:var(--accent-purple);">{{ item.category }}</a>
+          </span>
+        </div>
+        {% if item.subcategory %}
+        <div class="detail-row">
+          <span class="detail-key">Subcategory</span>
+          <span class="detail-val" style="color:var(--accent-teal);">{{ item.subcategory }}</span>
+        </div>
+        {% endif %}
+        <div class="detail-row">
+          <span class="detail-key">Created</span>
+          <span class="detail-val">{{ item.created_at[:10] }}</span>
+        </div>
+        <div class="detail-row">
+          <span class="detail-key">Last Updated</span>
+          <span class="detail-val">{{ item.updated_at[:10] }}</span>
+        </div>
+        <div class="detail-row">
+          <span class="detail-key">Favourite</span>
+          <span class="detail-val">{% if item.favourite %}⭐ Yes{% else %}No{% endif %}</span>
+        </div>
+        {% if item.content %}
+        <div class="detail-row">
+          <span class="detail-key">Content Length</span>
+          <span class="detail-val">{{ item.content|length }} chars</span>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Quick Actions -->
+    <div class="content-box card-sm">
+      <div class="detail-key" style="margin-bottom:12px;">⚡ Actions</div>
+      <div style="display:flex;flex-direction:column;gap:8px;">
+        <a href="{{ url_for('edit_item', item_id=item.id) }}" class="btn btn-secondary" style="justify-content:center;">
+          ✏️ Edit Item
+        </a>
+        <a href="{{ url_for('items') }}?category={{ item.category|urlencode }}"
+           class="btn btn-secondary" style="justify-content:center;">
+          📁 Same Category
+        </a>
+        <a href="{{ url_for('add') }}" class="btn btn-primary" style="justify-content:center;">
+          ＋ Add New
+        </a>
+        <form method="POST" action="{{ url_for('delete_item', item_id=item.id) }}" id="deleteFormPanel">
+          <button type="button" class="btn btn-danger delete-trigger w-full"
+                  data-form-id="deleteFormPanel" style="justify-content:center;">
+            🗑️ Delete Item
+          </button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% endblock %}

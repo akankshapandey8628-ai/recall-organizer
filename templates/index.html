@@ -1,0 +1,167 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard — Recall{% endblock %}
+{% block page_title %}Dashboard{% endblock %}
+{% block page_subtitle %}Welcome back — here's your digital life at a glance (Click any card to view items){% endblock %}
+
+{% block content %}
+
+<!-- Clickable Stats Grid -->
+<section class="page-section">
+  <div class="stats-grid" style="grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 16px;">
+    
+    <!-- Total Items -->
+    <a href="{{ url_for('items') }}" class="stat-card purple" style="text-decoration:none;display:block;cursor:pointer;" title="View all items">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+        <div class="stat-icon">📦</div>
+        <span style="font-size:11px;color:var(--accent-purple);font-weight:600;">View All →</span>
+      </div>
+      <div class="stat-value">{{ stats.total }}</div>
+      <div class="stat-label">Total Items</div>
+    </a>
+
+    <!-- Notes -->
+    <a href="{{ url_for('items') }}?type=note" class="stat-card blue" style="text-decoration:none;display:block;cursor:pointer;" title="View all notes">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+        <div class="stat-icon">📝</div>
+        <span style="font-size:11px;color:var(--accent-blue);font-weight:600;">View →</span>
+      </div>
+      <div class="stat-value">{{ stats.notes }}</div>
+      <div class="stat-label">Notes</div>
+    </a>
+
+    <!-- Links -->
+    <a href="{{ url_for('items') }}?type=link" class="stat-card teal" style="text-decoration:none;display:block;cursor:pointer;" title="View all links">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+        <div class="stat-icon">🔗</div>
+        <span style="font-size:11px;color:var(--accent-teal);font-weight:600;">View →</span>
+      </div>
+      <div class="stat-value">{{ stats.links }}</div>
+      <div class="stat-label">Links</div>
+    </a>
+
+    <!-- Images / Photos -->
+    <a href="{{ url_for('items') }}?type=image" class="stat-card pink" style="text-decoration:none;display:block;cursor:pointer;" title="View all images and photos">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+        <div class="stat-icon">🖼️</div>
+        <span style="font-size:11px;color:var(--accent-pink);font-weight:600;">View Photos →</span>
+      </div>
+      <div class="stat-value">{{ stats.images if stats.images is defined else stats.files }}</div>
+      <div class="stat-label">Photos / Images</div>
+    </a>
+
+    <!-- PDFs -->
+    <a href="{{ url_for('items') }}?type=pdf" class="stat-card orange" style="text-decoration:none;display:block;cursor:pointer;" title="View all PDF documents">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+        <div class="stat-icon">📄</div>
+        <span style="font-size:11px;color:#ffa502;font-weight:600;">View PDFs →</span>
+      </div>
+      <div class="stat-value">{{ stats.pdfs if stats.pdfs is defined else 0 }}</div>
+      <div class="stat-label">PDFs</div>
+    </a>
+
+    <!-- Favourites -->
+    <a href="{{ url_for('items') }}?favourites=1" class="stat-card orange" style="text-decoration:none;display:block;cursor:pointer;" title="View favourite items">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+        <div class="stat-icon">⭐</div>
+        <span style="font-size:11px;color:#f7c948;font-weight:600;">View →</span>
+      </div>
+      <div class="stat-value">{{ stats.favourites }}</div>
+      <div class="stat-label">Favourites</div>
+    </a>
+
+  </div>
+</section>
+
+<!-- Upcoming Deadlines & AI Reminders (if any) -->
+{% if deadline_items %}
+<section class="page-section">
+  <div class="section-header">
+    <div class="section-title"><span class="s-icon">⏰</span> Upcoming Deadlines & Dates</div>
+  </div>
+  <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(280px, 1fr));gap:16px;">
+    {% for d in deadline_items %}
+    <div class="card" style="padding:16px;background:linear-gradient(135deg, rgba(255,107,107,0.1), rgba(255,159,67,0.06));border:1px solid rgba(255,107,107,0.3);border-radius:var(--radius-md);">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+        <span style="font-size:11px;font-weight:700;color:#ff6b6b;background:rgba(255,107,107,0.2);padding:2px 8px;border-radius:10px;">
+          📅 {{ d.deadline.formatted or d.deadline.raw }}
+        </span>
+        <span style="font-size:12px;color:var(--text-muted);">{{ d.item.category }}</span>
+      </div>
+      <a href="{{ url_for('view_item', item_id=d.item.id) }}" style="font-weight:600;font-size:15px;color:var(--text-primary);text-decoration:none;display:block;margin-bottom:6px;">
+        {{ d.item.title }}
+      </a>
+      <p style="font-size:12px;color:var(--text-secondary);margin:0;line-height:1.4;">
+        {{ d.item.description or d.item.content[:80] }}...
+      </p>
+    </div>
+    {% endfor %}
+  </div>
+</section>
+{% endif %}
+
+<!-- Categories -->
+{% if categories %}
+<section class="page-section">
+  <div class="section-header">
+    <div class="section-title"><span class="s-icon">🗂️</span> Categories</div>
+    <a href="{{ url_for('items') }}" class="section-link">Browse all →</a>
+  </div>
+  <div class="categories-grid">
+    {% for cat in categories %}
+    <a href="{{ url_for('items') }}?category={{ cat.category|urlencode }}" class="category-card">
+      <div class="cat-count">{{ cat.cnt }}</div>
+      <div class="cat-name">{{ cat.category }}</div>
+    </a>
+    {% endfor %}
+  </div>
+</section>
+{% endif %}
+
+<!-- Favourites -->
+{% if fav_items %}
+<section class="page-section">
+  <div class="section-header">
+    <div class="section-title"><span class="s-icon">⭐</span> Favourites</div>
+    <a href="{{ url_for('items') }}?favourites=1" class="section-link">View all →</a>
+  </div>
+  <div class="items-grid">
+    {% for item in fav_items %}
+      {% include "_item_card.html" %}
+    {% endfor %}
+  </div>
+</section>
+{% endif %}
+
+<!-- Recent Items Header with Grid Size Switcher -->
+<section class="page-section">
+  <div class="section-header" style="flex-wrap:wrap;gap:10px;">
+    <div class="section-title"><span class="s-icon">🕐</span> Recently Added</div>
+    <div style="display:flex;align-items:center;gap:12px;margin-left:auto;">
+      <div class="grid-size-controls">
+        <span style="font-size:11px;color:var(--text-muted);padding:0 6px;">Size:</span>
+        <button type="button" class="grid-size-btn active" data-size="sm" onclick="setGridDensity('sm')" title="Small / Compact cards">⊞ Small</button>
+        <button type="button" class="grid-size-btn" data-size="md" onclick="setGridDensity('md')" title="Medium cards">▦ Medium</button>
+        <button type="button" class="grid-size-btn" data-size="lg" onclick="setGridDensity('lg')" title="Large cards">🗖 Large</button>
+      </div>
+      <a href="{{ url_for('items') }}" class="section-link">View all →</a>
+    </div>
+  </div>
+
+  {% if recent %}
+  <div class="items-grid grid-sm" id="mainItemsGrid">
+    {% for item in recent %}
+      {% include "_item_card.html" %}
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="empty-state">
+    <div class="empty-icon">🌱</div>
+    <h3>Nothing saved yet</h3>
+    <p>Start by adding a note, link, image, or PDF.</p>
+    <a href="{{ url_for('add') }}" class="btn btn-primary" style="margin-top:16px;">＋ Add Your First Item</a>
+  </div>
+  {% endif %}
+</section>
+
+{% endblock %}

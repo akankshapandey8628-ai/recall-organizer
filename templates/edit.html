@@ -1,0 +1,139 @@
+{% extends "base.html" %}
+
+{% set TYPE_ICONS = {'note': '📝', 'link': '🔗', 'image': '🖼️', 'pdf': '📄'} %}
+
+{% block title %}Edit: {{ item.title }} — Recall{% endblock %}
+{% block page_title %}Edit Item{% endblock %}
+{% block page_subtitle %}Updating: {{ item.title }}{% endblock %}
+
+{% block content %}
+<div class="form-container">
+  <div class="form-card">
+
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:24px;">
+      <span class="item-type-badge badge-{{ item.type }}">
+        {{ TYPE_ICONS.get(item.type, '📌') }} {{ item.type }}
+      </span>
+      <span style="color:var(--text-muted);font-size:13px;">Editing this {{ item.type }}</span>
+    </div>
+
+    <form method="POST"
+          action="{{ url_for('edit_item', item_id=item.id) }}"
+          enctype="multipart/form-data"
+          id="editForm">
+
+      <!-- Title -->
+      <div class="form-group">
+        <label class="form-label" for="title">Title <span class="required">*</span></label>
+        <input type="text" id="title" name="title" class="form-control"
+               value="{{ item.title }}" required/>
+      </div>
+
+      <!-- Description -->
+      <div class="form-group">
+        <label class="form-label" for="description">Description</label>
+        <textarea id="description" name="description" class="form-control" rows="2">{{ item.description or '' }}</textarea>
+      </div>
+
+      <!-- Type-specific fields -->
+      {% if item.type == 'note' %}
+      <div class="form-group">
+        <label class="form-label" for="content">Note Content</label>
+        <textarea id="content" name="content" class="form-control" rows="10">{{ item.content or '' }}</textarea>
+      </div>
+
+      {% elif item.type == 'link' %}
+      <div class="form-group">
+        <label class="form-label" for="url">URL</label>
+        <input type="url" id="url" name="url" class="form-control" value="{{ item.url or '' }}"/>
+      </div>
+
+      {% elif item.type in ('image', 'pdf') %}
+      <div class="form-group">
+        <label class="form-label">Current File</label>
+        {% if item.filename %}
+        <div style="display:flex;align-items:center;gap:10px;padding:12px;background:var(--bg-glass);border-radius:var(--radius-sm);margin-bottom:10px;">
+          {% if item.type == 'image' %}
+          <img src="{{ url_for('uploaded_file', filename=item.filename) }}"
+               style="width:60px;height:60px;object-fit:cover;border-radius:6px;" alt="current"/>
+          {% else %}
+          <span style="font-size:32px;">📄</span>
+          {% endif %}
+          <span style="font-size:13px;color:var(--text-secondary);">{{ item.filename }}</span>
+        </div>
+        {% endif %}
+        <label class="form-label">Replace File (optional)</label>
+        <div class="drop-zone" id="dropZone">
+          <input type="file" name="file" id="fileInput"
+                 accept="{% if item.type=='image' %}.png,.jpg,.jpeg,.gif,.webp{% else %}.pdf{% endif %}"/>
+          <div class="drop-icon">{{ '🖼️' if item.type=='image' else '📄' }}</div>
+          <div class="drop-text">Drag & drop a new file, or click to browse</div>
+          <div class="drop-sub">Leave empty to keep the existing file</div>
+        </div>
+      </div>
+      {% if item.content %}
+      <div class="form-group">
+        <label class="form-label">Extracted Text (editable)</label>
+        <textarea name="content" class="form-control" rows="6">{{ item.content }}</textarea>
+      </div>
+      {% endif %}
+      {% endif %}
+
+      <!-- Common Metadata -->
+      <div style="border-top:1px solid var(--border);margin:24px 0;padding-top:24px;">
+        <div class="form-group">
+          <label class="form-label" for="category">Category</label>
+          <input type="text" id="category" name="category" class="form-control"
+                 value="{{ item.category }}" list="categoryList" autocomplete="off"/>
+          <datalist id="categoryList">
+            <option value="General">
+            <option value="Work">
+            <option value="Personal">
+            <option value="Research">
+            <option value="Learning">
+            <option value="Ideas">
+            <option value="Finance">
+            <option value="Health">
+          </datalist>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="tags">Tags</label>
+          <input type="text" id="tags" name="tags" class="form-control"
+                 value="{{ item.tags | join(', ') }}"
+                 placeholder="Comma-separated…"/>
+        </div>
+
+        <div class="form-group">
+          <label class="checkbox-row">
+            <input type="checkbox" name="favourite" class="toggle-check"
+                   {% if item.favourite %}checked{% endif %}/>
+            <span class="form-label" style="margin:0;cursor:pointer;">⭐ Mark as Favourite</span>
+          </label>
+        </div>
+      </div>
+
+      <!-- In-form actions -->
+      <div class="form-actions">
+        <button type="submit" class="btn btn-primary">💾 Save Changes</button>
+        <a href="{{ url_for('view_item', item_id=item.id) }}" class="btn btn-secondary">Cancel</a>
+        <form method="POST" action="{{ url_for('delete_item', item_id=item.id) }}"
+              id="deleteFormEdit" style="margin-left:auto;">
+          <button type="button" class="btn btn-danger delete-trigger"
+                  data-form-id="deleteFormEdit">🗑️ Delete</button>
+        </form>
+      </div>
+    </form>
+
+    <!-- Sticky floating save bar (always visible) -->
+    <div class="sticky-save-bar">
+      <span style="color:var(--text-secondary);font-size:13px;">Editing: <strong style="color:var(--text-primary);">{{ item.title }}</strong></span>
+      <div style="display:flex;gap:10px;">
+        <a href="{{ url_for('view_item', item_id=item.id) }}" class="btn btn-secondary btn-sm">Cancel</a>
+        <button type="submit" form="editForm" class="btn btn-primary btn-sm">💾 Save Changes</button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+

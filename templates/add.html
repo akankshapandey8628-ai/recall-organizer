@@ -1,0 +1,308 @@
+{% extends "base.html" %}
+
+{% set cur_type = request.args.get('type', 'note') %}
+{% if cur_type not in ['note', 'link', 'image', 'pdf'] %}
+  {% set cur_type = 'note' %}
+{% endif %}
+
+{% block title %}Add New Item — Recall{% endblock %}
+{% block page_title %}Add New Item{% endblock %}
+{% block page_subtitle %}Choose what you want to save: Note, Link, Image, or PDF{% endblock %}
+
+{% block content %}
+<div class="form-container">
+  <div class="form-card">
+
+    <!-- Step 1: Clickable Type Tabs -->
+    <div style="margin-bottom:14px;font-size:14px;font-weight:700;color:var(--text-secondary);display:flex;align-items:center;gap:8px;">
+      <span style="font-size:18px;">👉</span> Step 1: Click what type of item you want to save:
+    </div>
+
+    <div class="type-switcher" style="display:grid;grid-template-columns:repeat(4, 1fr);gap:10px;margin-bottom:28px;">
+      <button type="button" id="btn-note"
+              class="type-btn {% if cur_type == 'note' %}active{% endif %}"
+              onclick="selectType('note')">
+        <span class="t-icon">📝</span> Note
+      </button>
+      <button type="button" id="btn-link"
+              class="type-btn {% if cur_type == 'link' %}active{% endif %}"
+              onclick="selectType('link')">
+        <span class="t-icon">🔗</span> Link
+      </button>
+      <button type="button" id="btn-image"
+              class="type-btn {% if cur_type == 'image' %}active{% endif %}"
+              onclick="selectType('image')">
+        <span class="t-icon">🖼️</span> Image / Photo
+      </button>
+      <button type="button" id="btn-pdf"
+              class="type-btn {% if cur_type == 'pdf' %}active{% endif %}"
+              onclick="selectType('pdf')">
+        <span class="t-icon">📄</span> PDF
+      </button>
+    </div>
+
+    <form method="POST" action="{{ url_for('add') }}" enctype="multipart/form-data" id="addForm">
+      <input type="hidden" name="type" id="typeInput" value="{{ cur_type }}"/>
+      <input type="hidden" name="tm_label" id="tmLabelInput" value=""/>
+
+      <!-- Title & Description (Common to all) -->
+      <div class="form-group">
+        <label class="form-label" for="title">Title <span class="required">*</span></label>
+        <input type="text" id="title" name="title" class="form-control"
+               placeholder="Give this item a name (e.g. Electricity Bill, Assignment, Receipt)…" required autocomplete="off"/>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label" for="description">Description (Optional)</label>
+        <textarea id="description" name="description" class="form-control" rows="2" style="min-height:55px;"
+                  placeholder="Short note or description…"></textarea>
+      </div>
+
+      <!-- ==================== NOTE SECTION ==================== -->
+      <div id="section-note" style="display:{% if cur_type == 'note' %}block{% else %}none{% endif %};">
+        <div class="form-group">
+          <label class="form-label" for="note-content">Note Content</label>
+          <textarea id="note-content" name="content" class="form-control" rows="6"
+                    placeholder="Write or paste your note here…"></textarea>
+          <div class="form-hint">Supports text. Dates, amounts, and tags will be auto-extracted.</div>
+        </div>
+      </div>
+
+      <!-- ==================== LINK SECTION ==================== -->
+      <div id="section-link" style="display:{% if cur_type == 'link' %}block{% else %}none{% endif %};">
+        <div class="form-group">
+          <label class="form-label" for="url">URL <span class="required">*</span></label>
+          <input type="url" id="url" name="url" class="form-control"
+                 placeholder="https://example.com"/>
+          <div class="form-hint">Paste any link — https:// is added automatically if omitted.</div>
+        </div>
+      </div>
+
+      <!-- ==================== IMAGE SECTION ==================== -->
+      <div id="section-image" style="display:{% if cur_type == 'image' %}block{% else %}none{% endif %};">
+        <div class="form-group">
+          <label class="form-label" style="font-size:15px;color:var(--accent-purple);font-weight:700;">
+            📷 Select Picture / Image File <span class="required">*</span>
+          </label>
+          
+          <div style="border:2px dashed var(--accent-purple);background:rgba(124,92,252,0.06);border-radius:var(--radius-md);padding:30px 20px;text-align:center;">
+            <div style="font-size:44px;margin-bottom:10px;">🖼️</div>
+            <div style="font-size:16px;font-weight:600;color:var(--text-primary);margin-bottom:12px;">
+              Choose an image from your computer
+            </div>
+            
+            <!-- Explicit clickable button -->
+            <button type="button" class="btn btn-primary" onclick="document.getElementById('imageFileInput').click()" style="padding:10px 22px;font-size:14px;cursor:pointer;">
+              📁 Browse & Select Image
+            </button>
+            
+            <input type="file" name="file" id="imageFileInput" accept=".png,.jpg,.jpeg,.gif,.webp,.bmp" style="display:none;" onchange="handleImageSelected(this)"/>
+
+            <div style="color:var(--text-muted);font-size:12px;margin-top:12px;">
+              Supports PNG, JPG, JPEG, WEBP up to 50 MB
+            </div>
+          </div>
+          
+          <!-- Image Live Preview -->
+          <div id="imagePreviewContainer" style="display:none;margin-top:16px;text-align:center;padding:14px;background:rgba(255,255,255,0.04);border-radius:var(--radius-sm);border:1px solid rgba(46,213,115,0.4);">
+            <div style="font-size:13px;color:#2ed573;font-weight:700;margin-bottom:8px;">✅ Image Selected Ready for Upload:</div>
+            <img id="imagePreview" src="" alt="Preview" style="max-height:220px;max-width:100%;border-radius:8px;object-fit:contain;border:1px solid var(--border);"/>
+            <div id="imageFileName" style="font-size:13px;color:var(--text-secondary);margin-top:6px;font-weight:600;"></div>
+          </div>
+
+          <div class="form-hint" style="margin-top:12px;">
+            ✨ <strong>Tesseract OCR</strong> will read all text inside this image automatically!
+          </div>
+        </div>
+      </div>
+
+      <!-- ==================== PDF SECTION ==================== -->
+      <div id="section-pdf" style="display:{% if cur_type == 'pdf' %}block{% else %}none{% endif %};">
+        <div class="form-group">
+          <label class="form-label" style="font-size:15px;color:var(--accent-teal);font-weight:700;">
+            📄 Select PDF Document <span class="required">*</span>
+          </label>
+          <div style="border:2px dashed var(--accent-teal);background:rgba(0,210,180,0.06);border-radius:var(--radius-md);padding:30px 20px;text-align:center;">
+            <div style="font-size:44px;margin-bottom:10px;">📄</div>
+            <div style="font-size:16px;font-weight:600;color:var(--text-primary);margin-bottom:12px;">
+              Choose a PDF from your computer
+            </div>
+            
+            <button type="button" class="btn btn-secondary" onclick="document.getElementById('pdfFileInput').click()" style="padding:10px 22px;font-size:14px;cursor:pointer;">
+              📁 Browse & Select PDF
+            </button>
+
+            <input type="file" name="file" id="pdfFileInput" accept=".pdf" style="display:none;" onchange="handlePdfSelected(this)"/>
+
+            <div id="pdfSelectedInfo" style="display:none;margin-top:12px;font-size:13px;color:#2ed573;font-weight:700;"></div>
+            <div style="color:var(--text-muted);font-size:12px;margin-top:8px;">
+              PDF up to 50 MB · Text & scanned pages will be indexed automatically
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Common Metadata -->
+      <div style="border-top:1px solid var(--border);margin:24px 0;padding-top:24px;">
+        <div class="form-group">
+          <label class="form-label" for="category">Category (Leave "General" for Auto-Detect)</label>
+          <input type="text" id="category" name="category" class="form-control"
+                 placeholder="e.g. College, Finance, Travel, Food, Shopping, Personal…" value="General"
+                 list="categoryList" autocomplete="off"/>
+          <datalist id="categoryList">
+            <option value="General">
+            <option value="College">
+            <option value="Finance">
+            <option value="Travel">
+            <option value="Food">
+            <option value="Shopping">
+            <option value="Personal">
+          </datalist>
+          <div class="form-hint">✨ Leave as <strong>General</strong> to let Recall automatically detect category & subcategory!</div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="tags">Tags (Optional)</label>
+          <input type="text" id="tags" name="tags" class="form-control"
+                 placeholder="Comma-separated: bill, receipt, college, semester…"/>
+          <div class="form-hint">Recall also extracts smart tags automatically from your image/content.</div>
+        </div>
+
+        <div class="form-group">
+          <label class="checkbox-row">
+            <input type="checkbox" name="favourite" class="toggle-check"/>
+            <span class="form-label" style="margin:0;cursor:pointer;">⭐ Mark as Favourite</span>
+          </label>
+        </div>
+      </div>
+
+      <!-- Processing Indicator -->
+      <div id="processingIndicator" style="display:none;padding:16px;background:rgba(124,92,252,0.15);border:1px solid var(--accent-purple);border-radius:var(--radius-sm);margin-bottom:20px;text-align:center;">
+        <div style="font-size:24px;animation:spin 1s linear infinite;display:inline-block;margin-bottom:8px;">⚙️</div>
+        <div style="font-weight:600;color:var(--text-primary);font-size:14px;">Analyzing & Extracting Text...</div>
+        <div style="font-size:12px;color:var(--text-secondary);margin-top:4px;">Running Tesseract OCR, entity detection, and auto-categorization.</div>
+      </div>
+
+      <!-- In-form actions -->
+      <div class="form-actions">
+        <button type="submit" class="btn btn-primary" id="saveBtn" style="padding:10px 24px;font-size:15px;cursor:pointer;">
+          💾 Save Item
+        </button>
+        <a href="{{ url_for('index') }}" class="btn btn-secondary">Cancel</a>
+      </div>
+    </form>
+
+    <!-- Sticky floating save bar -->
+    <div class="sticky-save-bar" id="stickySaveBar">
+      <span style="color:var(--text-secondary);font-size:13px;">Ready to save?</span>
+      <div style="display:flex;gap:10px;">
+        <a href="{{ url_for('index') }}" class="btn btn-secondary btn-sm">Cancel</a>
+        <button type="submit" form="addForm" class="btn btn-primary btn-sm">💾 Save Item</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<style>
+@keyframes spin { 100% { transform: rotate(360deg); } }
+.type-btn {
+  cursor: pointer;
+  padding: 12px;
+  border-radius: 8px;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  font-weight: 600;
+  transition: all 0.2s ease;
+}
+.type-btn:hover {
+  background: rgba(124,92,252,0.15) !important;
+  border-color: var(--accent-purple) !important;
+  color: #fff !important;
+}
+.type-btn.active {
+  background: var(--accent-purple) !important;
+  color: #fff !important;
+  border-color: var(--accent-purple) !important;
+  box-shadow: 0 0 14px rgba(124,92,252,0.5);
+}
+</style>
+
+<!-- DIRECT INLINE JAVASCRIPT - 100% RELIABLE -->
+<script>
+function selectType(type) {
+  document.getElementById('typeInput').value = type;
+  
+  // Show only chosen section
+  document.getElementById('section-note').style.display  = (type === 'note' ? 'block' : 'none');
+  document.getElementById('section-link').style.display  = (type === 'link' ? 'block' : 'none');
+  document.getElementById('section-image').style.display = (type === 'image' ? 'block' : 'none');
+  document.getElementById('section-pdf').style.display   = (type === 'pdf' ? 'block' : 'none');
+  
+  // Update button active states
+  ['note', 'link', 'image', 'pdf'].forEach(function(t) {
+    var btn = document.getElementById('btn-' + t);
+    if (btn) {
+      if (t === type) {
+        btn.classList.add('active');
+      } else {
+        btn.classList.remove('active');
+      }
+    }
+  });
+}
+
+function handleImageSelected(input) {
+  if (input.files && input.files[0]) {
+    var file = input.files[0];
+    var reader = new FileReader();
+    reader.onload = function(e) {
+      document.getElementById('imagePreview').src = e.target.result;
+      document.getElementById('imagePreviewContainer').style.display = 'block';
+      document.getElementById('imageFileName').textContent = file.name + ' (' + (file.size / 1024).toFixed(1) + ' KB)';
+      
+      // Auto-fill title if empty
+      var titleInput = document.getElementById('title');
+      if (titleInput && !titleInput.value.trim()) {
+        var baseName = file.name.replace(/\.[^/.]+$/, "");
+        titleInput.value = baseName.replace(/[-_]/g, ' ');
+      }
+    };
+    reader.readAsDataURL(file);
+  }
+}
+
+function handlePdfSelected(input) {
+  if (input.files && input.files[0]) {
+    var file = input.files[0];
+    var info = document.getElementById('pdfSelectedInfo');
+    info.textContent = '✅ Selected PDF: ' + file.name + ' (' + (file.size / 1024).toFixed(1) + ' KB)';
+    info.style.display = 'block';
+    
+    var titleInput = document.getElementById('title');
+    if (titleInput && !titleInput.value.trim()) {
+      var baseName = file.name.replace(/\.[^/.]+$/, "");
+      titleInput.value = baseName.replace(/[-_]/g, ' ');
+    }
+  }
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+  var form = document.getElementById('addForm');
+  var indicator = document.getElementById('processingIndicator');
+  var saveBtns = document.querySelectorAll('button[type="submit"]');
+  if (form && indicator) {
+    form.addEventListener('submit', function() {
+      // Show smooth animated indicator without disabling the button (disabling can cancel browser form submit)
+      indicator.style.display = 'block';
+      indicator.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      saveBtns.forEach(function(btn) {
+        btn.style.pointerEvents = 'none';
+        btn.style.opacity = '0.75';
+        btn.innerHTML = '⏳ Saving & Analyzing...';
+      });
+    });
+  }
+});
+</script>
+{% endblock %}

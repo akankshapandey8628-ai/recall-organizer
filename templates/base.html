@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>{% block title %}Recall — Digital Life Organizer{% endblock %}</title>
+  <meta name="description" content="{% block meta_desc %}Recall is your personal digital organizer — save notes, links, images, and PDFs in one beautiful place.{% endblock %}"/>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=3.0"/>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧠</text></svg>"/>
+</head>
+<body>
+
+<!-- Sidebar Overlay (mobile) -->
+<div id="sidebarOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:99;backdrop-filter:blur(2px);"></div>
+
+<!-- ── Sidebar ──────────────────────────────────────────────────────────────── -->
+<aside class="sidebar" id="sidebar">
+  <div class="sidebar-logo">
+    <div class="logo-mark">
+      <div class="logo-icon">🧠</div>
+      <div class="logo-text">
+        <h1>Recall</h1>
+        <p>Digital Life Organizer</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="sidebar-search">
+    <div class="sidebar-search-box" style="position:relative;">
+      <span class="search-icon">🔍</span>
+      <input type="text" id="sidebarSearch" placeholder="Quick search…" autocomplete="off"/>
+      <div id="search-results-dropdown"></div>
+    </div>
+  </div>
+
+  <nav class="sidebar-nav">
+    <p class="nav-section-label">Navigation</p>
+    <a href="{{ url_for('index') }}" class="nav-item {% if request.endpoint == 'index' %}active{% endif %}">
+      <span class="nav-icon">🏠</span> Dashboard
+    </a>
+    <a href="{{ url_for('items') }}" class="nav-item {% if request.endpoint == 'items' and not request.args.get('type') and not request.args.get('favourites') %}active{% endif %}">
+      <span class="nav-icon">📦</span> All Items
+    </a>
+    <a href="{{ url_for('items') }}?favourites=1" class="nav-item {% if request.args.get('favourites') == '1' %}active{% endif %}">
+      <span class="nav-icon">⭐</span> Favourites
+    </a>
+
+    <p class="nav-section-label" style="margin-top:12px;">By Type</p>
+    <a href="{{ url_for('items') }}?type=note" class="nav-item {% if request.args.get('type') == 'note' %}active{% endif %}">
+      <span class="nav-icon">📝</span> Notes
+    </a>
+    <a href="{{ url_for('items') }}?type=link" class="nav-item {% if request.args.get('type') == 'link' %}active{% endif %}">
+      <span class="nav-icon">🔗</span> Links
+    </a>
+    <a href="{{ url_for('items') }}?type=image" class="nav-item {% if request.args.get('type') == 'image' %}active{% endif %}">
+      <span class="nav-icon">🖼️</span> Images
+    </a>
+    <a href="{{ url_for('items') }}?type=pdf" class="nav-item {% if request.args.get('type') == 'pdf' %}active{% endif %}">
+      <span class="nav-icon">📄</span> PDFs
+    </a>
+
+    <p class="nav-section-label" style="margin-top:12px;">AI Tools</p>
+    <a href="{{ url_for('recognise') }}" class="nav-item {% if request.endpoint in ['recognise', 'recognize'] %}active{% endif %}">
+      <span class="nav-icon">🤖</span> Image Recognizer
+    </a>
+  </nav>
+
+  <div class="sidebar-footer">
+    <a href="{{ url_for('add') }}" class="add-btn">
+      <span style="font-size:18px;">＋</span> Add New Item
+    </a>
+  </div>
+</aside>
+
+<!-- ── Main Wrapper ─────────────────────────────────────────────────────────── -->
+<div class="main-wrap">
+  <!-- Topbar with Global Search Bar -->
+  <header class="topbar">
+    <div style="flex-shrink:0;">
+      <div class="topbar-title">{% block page_title %}Recall{% endblock %}</div>
+      <div class="topbar-subtitle">{% block page_subtitle %}Your digital memory{% endblock %}</div>
+    </div>
+
+    <!-- 🔍 Top AI & Photo Search Bar -->
+    <div class="topbar-search-wrap">
+      <form action="{{ url_for('items') }}" method="GET" class="topbar-search-form" id="topSearchForm">
+        <span class="top-search-icon">🔍</span>
+        <input type="text"
+               name="q"
+               id="globalTopSearch"
+               class="topbar-search-input"
+               placeholder="Search photos, #tags, AI text, receipts, notes... (Press Enter)"
+               autocomplete="off"
+               value="{{ query if query is defined else request.args.get('q', '') }}"/>
+        <kbd class="top-search-kbd">Enter ↵</kbd>
+        <div id="top-search-dropdown" class="top-search-dropdown" style="display:none;"></div>
+      </form>
+    </div>
+
+    <div class="topbar-actions" style="flex-shrink:0;">
+      {% block topbar_actions %}
+      <a href="{{ url_for('add') }}" class="btn btn-primary btn-sm">
+        ＋ New Item
+      </a>
+      {% endblock %}
+      <button class="mobile-menu-btn" id="mobileMenuBtn" aria-label="Open menu">☰</button>
+    </div>
+  </header>
+
+  <!-- Flash Messages -->
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+    <div class="flash-container">
+      {% for category, message in messages %}
+      <div class="flash {{ category }}">
+        {% if category == 'success' %}✅{% elif category == 'error' %}❌{% else %}ℹ️{% endif %}
+        {{ message }}
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+  {% endwith %}
+
+  <!-- Page Content -->
+  <main class="main-content fade-in">
+    {% block content %}{% endblock %}
+  </main>
+</div>
+
+<!-- ── Delete Confirmation Modal ─────────────────────────────────────────────── -->
+<div class="modal-overlay" id="deleteModal">
+  <div class="modal">
+    <div class="modal-title">🗑️ Delete Item</div>
+    <div class="modal-body">Are you sure you want to delete this item? This action cannot be undone and any associated files will be removed.</div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" id="cancelDelete">Cancel</button>
+      <button class="btn btn-danger" id="confirmDelete">Yes, Delete</button>
+    </div>
+  </div>
+</div>
+
+<!-- Google Photos Style Image Lightbox Modal -->
+<div id="imageLightboxModal" class="lightbox-modal" style="display:none;" onclick="if(event.target === this) closeImageLightbox()">
+  <div class="lightbox-content">
+    <div class="lightbox-header">
+      <div id="lightboxTitle" style="font-weight:700;font-size:15px;color:#fff;"></div>
+      <div style="display:flex;align-items:center;gap:12px;">
+        <span id="lightboxCategory" class="cat-pill" style="background:rgba(255,255,255,0.15);color:#fff;"></span>
+        <button type="button" class="lightbox-close" onclick="closeImageLightbox()" title="Close (Esc)">✕</button>
+      </div>
+    </div>
+    <div class="lightbox-body">
+      <img id="lightboxImg" src="" alt="Enlarged View" />
+    </div>
+  </div>
+</div>
+
+<script src="{{ url_for('static', filename='js/main.js') }}?v=3.0"></script>
+{% block extra_js %}{% endblock %}
+</body>
+</html>

@@ -1,0 +1,190 @@
+{% extends "base.html" %}
+
+{% if selected_type == 'image' %}
+  {% set page_heading = "🖼️ Photos & Images" %}
+  {% set page_sub = items|length ~ " image" ~ ("s" if items|length != 1 else "") ~ " saved in your collection" %}
+  {% set add_label = "＋ Upload New Photo / Image" %}
+  {% set add_url = url_for('add', type='image') %}
+{% elif selected_type == 'link' %}
+  {% set page_heading = "🔗 Saved Web Links" %}
+  {% set page_sub = items|length ~ " link" ~ ("s" if items|length != 1 else "") ~ " attached" %}
+  {% set add_label = "＋ Attach New Link" %}
+  {% set add_url = url_for('add', type='link') %}
+{% elif selected_type == 'note' %}
+  {% set page_heading = "📝 Saved Notes" %}
+  {% set page_sub = items|length ~ " note" ~ ("s" if items|length != 1 else "") ~ " written" %}
+  {% set add_label = "＋ Write New Note" %}
+  {% set add_url = url_for('add', type='note') %}
+{% elif selected_type == 'pdf' %}
+  {% set page_heading = "📄 PDF Documents" %}
+  {% set page_sub = items|length ~ " PDF" ~ ("s" if items|length != 1 else "") ~ " attached" %}
+  {% set add_label = "＋ Upload New PDF" %}
+  {% set add_url = url_for('add', type='pdf') %}
+{% elif fav_only %}
+  {% set page_heading = "⭐ Favourite Items" %}
+  {% set page_sub = items|length ~ " favourite" ~ ("s" if items|length != 1 else "") ~ " starred" %}
+  {% set add_label = "＋ Add New Item" %}
+  {% set add_url = url_for('add') %}
+{% else %}
+  {% set page_heading = "📦 All Items" %}
+  {% set page_sub = items|length ~ " item" ~ ("s" if items|length != 1 else "") ~ " found" %}
+  {% set add_label = "＋ Add New Item" %}
+  {% set add_url = url_for('add') %}
+{% endif %}
+
+{% block title %}{{ page_heading }} — Recall{% endblock %}
+{% block page_title %}{{ page_heading }}{% endblock %}
+{% block page_subtitle %}{{ page_sub }}{% endblock %}
+
+{% block topbar_actions %}
+<a href="{{ add_url }}" class="btn btn-primary btn-sm">
+  {{ add_label }}
+</a>
+{% endblock %}
+
+{% block content %}
+
+<!-- Filters -->
+<form method="GET" action="{{ url_for('items') }}" id="filterForm">
+  <div class="filters-bar">
+    <div class="filter-group">
+      <span class="filter-label">🔍</span>
+      <input type="text" name="q" value="{{ query }}"
+             placeholder="Search in {{ selected_type or 'all' }} items…" class="filter-input"
+             id="mainSearch"/>
+    </div>
+    <div class="filter-group">
+      <span class="filter-label">Category</span>
+      <select name="category" class="filter-select" onchange="this.form.submit()">
+        <option value="">All Categories</option>
+        {% for cat in categories %}
+        <option value="{{ cat }}" {% if cat == selected_category %}selected{% endif %}>{{ cat }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="filter-group">
+      <span class="filter-label">Sort</span>
+      <select name="sort" class="filter-select" onchange="this.form.submit()">
+        <option value="newest" {% if sort=='newest' %}selected{% endif %}>Newest first</option>
+        <option value="oldest" {% if sort=='oldest' %}selected{% endif %}>Oldest first</option>
+        <option value="az"     {% if sort=='az' %}selected{% endif %}>A → Z</option>
+        <option value="za"     {% if sort=='za' %}selected{% endif %}>Z → A</option>
+        <option value="updated" {% if sort=='updated' %}selected{% endif %}>Last updated</option>
+      </select>
+    </div>
+    <button type="submit" class="btn btn-primary btn-sm">Filter</button>
+
+    <div class="filter-chips">
+      <a href="{{ url_for('items') }}"
+         class="filter-chip {% if not selected_type and not fav_only and not query and not selected_category %}active{% endif %}">
+        All
+      </a>
+      <a href="{{ url_for('items') }}?type=note"
+         class="filter-chip {% if selected_type=='note' %}active{% endif %}">📝 Notes</a>
+      <a href="{{ url_for('items') }}?type=link"
+         class="filter-chip {% if selected_type=='link' %}active{% endif %}">🔗 Links</a>
+      <a href="{{ url_for('items') }}?type=image"
+         class="filter-chip {% if selected_type=='image' %}active{% endif %}">🖼️ Images ({{ items|length if selected_type=='image' else '' }})</a>
+      <a href="{{ url_for('items') }}?type=pdf"
+         class="filter-chip {% if selected_type=='pdf' %}active{% endif %}">📄 PDFs</a>
+      <a href="{{ url_for('items') }}?favourites=1"
+         class="filter-chip {% if fav_only %}active{% endif %}">⭐ Favourites</a>
+    </div>
+
+    {% if selected_type %}<input type="hidden" name="type" value="{{ selected_type }}"/>{% endif %}
+    {% if fav_only %}<input type="hidden" name="favourites" value="1"/>{% endif %}
+  </div>
+</form>
+
+<!-- Items Grid Header & Size Controls -->
+{% if items %}
+<div style="display:flex;justify-content:flex-end;margin-bottom:12px;">
+  <div class="grid-size-controls">
+    <span style="font-size:11px;color:var(--text-muted);padding:0 6px;">Size:</span>
+    <button type="button" class="grid-size-btn active" data-size="sm" onclick="setGridDensity('sm')" title="Small / Compact cards">⊞ Small</button>
+    <button type="button" class="grid-size-btn" data-size="md" onclick="setGridDensity('md')" title="Medium cards">▦ Medium</button>
+    <button type="button" class="grid-size-btn" data-size="lg" onclick="setGridDensity('lg')" title="Large cards">🗖 Large</button>
+  </div>
+</div>
+<div class="items-grid grid-sm" id="mainItemsGrid">
+  {% for item in items %}
+    {% include "_item_card.html" %}
+  {% endfor %}
+</div>
+{% else %}
+  <!-- Clear, Beautiful, Informative Empty States -->
+  {% if selected_type == 'link' %}
+  <div class="empty-state" style="padding:48px 24px;background:var(--bg-card);border:1px dashed var(--border);border-radius:var(--radius-lg);margin-top:20px;">
+    <div class="empty-icon" style="font-size:48px;margin-bottom:12px;">🔗</div>
+    <h3 style="font-size:22px;color:var(--text-primary);margin-bottom:8px;">There is no link attached yet</h3>
+    <p style="color:var(--text-secondary);font-size:15px;max-width:440px;margin:0 auto 20px;line-height:1.5;">
+      Aapka koi bhi website link ya URL save nahi hai. Kisi bhi link ya bookmark ko save karne ke liye neeche button dabayein:
+    </p>
+    <a href="{{ url_for('add', type='link') }}" class="btn btn-primary" style="padding:12px 28px;font-size:15px;">
+      ＋ Attach Your First Link
+    </a>
+  </div>
+
+  {% elif selected_type == 'image' %}
+  <div class="empty-state" style="padding:48px 24px;background:var(--bg-card);border:1px dashed var(--border);border-radius:var(--radius-lg);margin-top:20px;">
+    <div class="empty-icon" style="font-size:48px;margin-bottom:12px;">🖼️</div>
+    <h3 style="font-size:22px;color:var(--text-primary);margin-bottom:8px;">No Photos or Images Saved Yet</h3>
+    <p style="color:var(--text-secondary);font-size:15px;max-width:440px;margin:0 auto 20px;line-height:1.5;">
+      Aapne abhi tak koi photo upload nahi ki hai. Bills, screenshots ya study photos upload karein — Tesseract OCR sab read kar lega!
+    </p>
+    <a href="{{ url_for('add', type='image') }}" class="btn btn-primary" style="padding:12px 28px;font-size:15px;">
+      ＋ Upload Your First Photo / Image
+    </a>
+  </div>
+
+  {% elif selected_type == 'note' %}
+  <div class="empty-state" style="padding:48px 24px;background:var(--bg-card);border:1px dashed var(--border);border-radius:var(--radius-lg);margin-top:20px;">
+    <div class="empty-icon" style="font-size:48px;margin-bottom:12px;">📝</div>
+    <h3 style="font-size:22px;color:var(--text-primary);margin-bottom:8px;">No Notes Saved Yet</h3>
+    <p style="color:var(--text-secondary);font-size:15px;max-width:440px;margin:0 auto 20px;line-height:1.5;">
+      Aapne koi note nahi banaya hai. Apne thoughts, assignment details ya lecture notes likhein.
+    </p>
+    <a href="{{ url_for('add', type='note') }}" class="btn btn-primary" style="padding:12px 28px;font-size:15px;">
+      ＋ Write Your First Note
+    </a>
+  </div>
+
+  {% elif selected_type == 'pdf' %}
+  <div class="empty-state" style="padding:48px 24px;background:var(--bg-card);border:1px dashed var(--border);border-radius:var(--radius-lg);margin-top:20px;">
+    <div class="empty-icon" style="font-size:48px;margin-bottom:12px;">📄</div>
+    <h3 style="font-size:22px;color:var(--text-primary);margin-bottom:8px;">No PDF Documents Attached Yet</h3>
+    <p style="color:var(--text-secondary);font-size:15px;max-width:440px;margin:0 auto 20px;line-height:1.5;">
+      Koi bhi PDF file attached nahi hai. Syllabus ya study material PDF upload karein.
+    </p>
+    <a href="{{ url_for('add', type='pdf') }}" class="btn btn-primary" style="padding:12px 28px;font-size:15px;">
+      ＋ Upload Your First PDF
+    </a>
+  </div>
+
+  {% elif fav_only %}
+  <div class="empty-state" style="padding:48px 24px;background:var(--bg-card);border:1px dashed var(--border);border-radius:var(--radius-lg);margin-top:20px;">
+    <div class="empty-icon" style="font-size:48px;margin-bottom:12px;">⭐</div>
+    <h3 style="font-size:22px;color:var(--text-primary);margin-bottom:8px;">No Favourites Marked Yet</h3>
+    <p style="color:var(--text-secondary);font-size:15px;max-width:440px;margin:0 auto 20px;line-height:1.5;">
+      Kisi bhi note, photo ya link par star (⭐) mark karein taki wo yahan alag se dikhe.
+    </p>
+    <a href="{{ url_for('items') }}" class="btn btn-secondary" style="padding:10px 24px;">
+      Browse All Items
+    </a>
+  </div>
+
+  {% else %}
+  <div class="empty-state" style="padding:48px 24px;background:var(--bg-card);border:1px dashed var(--border);border-radius:var(--radius-lg);margin-top:20px;">
+    <div class="empty-icon" style="font-size:48px;margin-bottom:12px;">🔍</div>
+    <h3 style="font-size:22px;color:var(--text-primary);margin-bottom:8px;">No Items Found</h3>
+    <p style="color:var(--text-secondary);font-size:15px;max-width:440px;margin:0 auto 20px;line-height:1.5;">
+      {% if query %}No results matching "{{ query }}". Try a different search.{% else %}Aapka collection khali hai. Kuch naya add karein!{% endif %}
+    </p>
+    <a href="{{ url_for('add') }}" class="btn btn-primary" style="padding:12px 28px;font-size:15px;">
+      ＋ Add New Item
+    </a>
+  </div>
+  {% endif %}
+{% endif %}
+
+{% endblock %}

@@ -1,0 +1,491 @@
+{% extends "base.html" %}
+
+{% block title %}Image Recognizer — Recall{% endblock %}
+{% block page_title %}AI Image Recognizer{% endblock %}
+{% block page_subtitle %}Classify images instantly using your Google Teachable Machine model{% endblock %}
+
+{% block content %}
+<div class="recognizer-page" style="max-width: 1100px; margin: 0 auto; display: flex; flex-direction: column; gap: 24px;">
+
+  <!-- Model Status Header Card -->
+  <div class="form-card" style="padding: 20px 24px;">
+    <div style="display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 16px;">
+      <div>
+        <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 6px;">
+          <h2 style="font-size: 1.15rem; font-weight: 700; margin: 0; color: var(--text-primary); display: flex; align-items: center; gap: 8px;">
+            <span>🧠</span> Teachable Machine Model
+          </h2>
+          <span id="modelStatusBadge" class="item-type-badge" style="background: rgba(247,162,92,0.15); color: var(--accent-orange); font-size: 0.78rem; font-weight: 600; padding: 4px 10px; border-radius: 999px; display: inline-flex; align-items: center; gap: 6px;">
+            <span class="status-dot" style="width: 8px; height: 8px; border-radius: 50%; background: var(--accent-orange); display: inline-block; animation: pulse 1.5s infinite;"></span>
+            <span id="modelStatusText">Loading model...</span>
+          </span>
+        </div>
+        <p style="font-size: 0.85rem; color: var(--text-secondary); margin: 0;">
+          Loaded locally from <code style="background: var(--bg-glass-hover); padding: 2px 6px; border-radius: 4px; font-family: monospace; font-size: 0.8rem; color: var(--accent-teal);">/static/teachable_model/</code> &bull; Pure browser-side inference with TensorFlow.js
+        </p>
+      </div>
+
+      <!-- Detected Classes Pills -->
+      <div id="modelClassesContainer" style="display: flex; flex-wrap: wrap; gap: 8px; align-items: center;">
+        <span style="font-size: 0.8rem; color: var(--text-secondary); font-weight: 600;">Model Classes:</span>
+        <div id="classesList" style="display: flex; flex-wrap: wrap; gap: 6px;">
+          <span style="font-size: 0.75rem; color: var(--text-secondary);">Reading metadata...</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Error Banner (Hidden by default) -->
+    <div id="modelErrorBanner" style="display: none; margin-top: 16px; padding: 14px 18px; border-radius: var(--radius-md); background: rgba(255, 75, 75, 0.12); border: 1px solid rgba(255, 75, 75, 0.3); color: #ff8585; font-size: 0.9rem;">
+      <div style="font-weight: 700; display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
+        <span>⚠️</span> Model Initialization Failed
+      </div>
+      <div id="modelErrorMessage" style="font-size: 0.85rem; line-height: 1.5; color: #ffb3b3;"></div>
+    </div>
+  </div>
+
+  <!-- Interactive Grid: Upload & Preview (Left) + Predictions (Right) -->
+  <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); gap: 24px; align-items: start;">
+
+    <!-- Left Card: Image Selection & Preview -->
+    <div class="form-card" style="padding: 24px; display: flex; flex-direction: column; gap: 20px;">
+      <div style="display: flex; justify-content: space-between; align-items: center;">
+        <h3 style="font-size: 1.05rem; font-weight: 600; margin: 0; color: var(--text-primary); display: flex; align-items: center; gap: 8px;">
+          <span>📸</span> Select Image
+        </h3>
+        <span id="imageMetaBadge" style="display: none; font-size: 0.75rem; color: var(--text-secondary); background: var(--bg-glass-hover); padding: 3px 8px; border-radius: 6px;"></span>
+      </div>
+
+      <!-- Drop Zone -->
+      <div class="drop-zone" id="dropZone" style="cursor: pointer; position: relative; border: 2px dashed rgba(255,255,255,0.18); border-radius: var(--radius-lg); padding: 32px 20px; text-align: center; transition: all 0.2s ease; background: var(--bg-glass);">
+        <input type="file" id="imageInput" accept="image/png, image/jpeg, image/webp, image/gif, image/bmp" style="position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%; z-index: 5;" />
+        
+        <!-- Placeholder View (When no image is chosen) -->
+        <div id="dropPlaceholder" style="display: flex; flex-direction: column; align-items: center; gap: 10px;">
+          <div style="font-size: 2.8rem; line-height: 1; filter: drop-shadow(0 4px 12px rgba(124,92,252,0.3));">🖼️</div>
+          <div style="font-weight: 600; font-size: 1rem; color: var(--text-primary);">Click or Drag & Drop Image Here</div>
+          <div class="form-hint" style="margin: 0; font-size: 0.82rem; color: var(--text-secondary);">Supports PNG, JPG, JPEG, WEBP, GIF, BMP</div>
+        </div>
+
+        <!-- Preview View (When image chosen) -->
+        <div id="previewContainer" style="display: none; flex-direction: column; align-items: center; gap: 12px; position: relative; z-index: 1;">
+          <img id="imagePreview" alt="Preview" style="max-width: 100%; max-height: 280px; object-fit: contain; border-radius: var(--radius-md); box-shadow: 0 8px 30px rgba(0,0,0,0.5); border: 1px solid rgba(255,255,255,0.1);" />
+          <div style="font-size: 0.8rem; color: var(--accent-teal); font-weight: 500;">Click image or drag another file to replace</div>
+        </div>
+      </div>
+
+      <!-- Action Buttons -->
+      <div style="display: flex; gap: 12px; align-items: center; margin-top: 4px;">
+        <button type="button" id="btnRecognize" class="btn btn-primary" style="flex: 1; justify-content: center; padding: 12px 20px; font-size: 0.95rem; font-weight: 600; box-shadow: 0 4px 16px rgba(124,92,252,0.35);" disabled>
+          <span id="btnIcon" style="margin-right: 6px;">⚡</span>
+          <span id="btnText">Recognize Image</span>
+        </button>
+        <button type="button" id="btnClear" class="btn btn-secondary" style="padding: 12px 18px;" title="Reset selection">
+          ✕ Clear
+        </button>
+      </div>
+    </div>
+
+    <!-- Right Card: Prediction Results -->
+    <div class="form-card" style="padding: 24px; display: flex; flex-direction: column; gap: 20px;">
+      <div style="display: flex; justify-content: space-between; align-items: center;">
+        <h3 style="font-size: 1.05rem; font-weight: 600; margin: 0; color: var(--text-primary); display: flex; align-items: center; gap: 8px;">
+          <span>🎯</span> Prediction Results
+        </h3>
+        <span id="inferTimeBadge" style="display: none; font-size: 0.75rem; color: var(--accent-teal); background: rgba(92,247,212,0.1); padding: 3px 8px; border-radius: 6px;"></span>
+      </div>
+
+      <!-- State 1: Idle (No prediction yet) -->
+      <div id="resultsIdleState" style="text-align: center; padding: 48px 20px; color: var(--text-secondary); display: flex; flex-direction: column; align-items: center; gap: 12px;">
+        <div style="font-size: 2.6rem; opacity: 0.5;">🔍</div>
+        <div style="font-size: 0.95rem; font-weight: 500; color: var(--text-primary);">Awaiting Image & Action</div>
+        <p style="font-size: 0.84rem; max-width: 280px; margin: 0; line-height: 1.5; color: var(--text-secondary);">
+          Choose an image from the left card, then click <strong>"Recognize Image"</strong> to view classification probabilities.
+        </p>
+      </div>
+
+      <!-- State 2: Computing / Spinner -->
+      <div id="resultsLoadingState" style="display: none; text-align: center; padding: 50px 20px; flex-direction: column; align-items: center; gap: 16px;">
+        <div style="width: 44px; height: 44px; border: 3px solid rgba(124,92,252,0.2); border-top-color: var(--accent-purple); border-radius: 50%; animation: spin 0.8s linear infinite;"></div>
+        <div style="font-weight: 600; color: var(--text-primary); font-size: 0.95rem;">Running neural network prediction...</div>
+        <div style="font-size: 0.8rem; color: var(--text-secondary);">Evaluating image features against model classes</div>
+      </div>
+
+      <!-- State 3: Prediction Computed -->
+      <div id="resultsContent" style="display: none; flex-direction: column; gap: 20px;">
+        
+        <!-- Top Prediction Hero Card -->
+        <div style="background: linear-gradient(135deg, rgba(124,92,252,0.15) 0%, rgba(92,247,212,0.1) 100%); border: 1px solid rgba(124,92,252,0.3); border-radius: var(--radius-md); padding: 18px 20px; display: flex; align-items: center; justify-content: space-between; gap: 16px;">
+          <div>
+            <div style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.08em; font-weight: 700; color: var(--accent-purple); margin-bottom: 4px;">
+              Top Predicted Class
+            </div>
+            <div id="topClassName" style="font-size: 1.5rem; font-weight: 800; color: var(--text-primary); text-transform: capitalize; letter-spacing: -0.02em;">
+              --
+            </div>
+          </div>
+          <div style="text-align: right;">
+            <div style="font-size: 0.75rem; color: var(--text-secondary); margin-bottom: 4px; font-weight: 600;">Confidence</div>
+            <div id="topConfidence" style="font-size: 1.6rem; font-weight: 800; color: var(--accent-teal); font-variant-numeric: tabular-nums;">
+              0.0%
+            </div>
+          </div>
+        </div>
+
+        <!-- All Classes Probability Bars -->
+        <div>
+          <div style="font-size: 0.82rem; font-weight: 600; color: var(--text-secondary); margin-bottom: 12px; display: flex; justify-content: space-between;">
+            <span>Class Breakdown</span>
+            <span>Probability</span>
+          </div>
+          <div id="predictionBars" style="display: flex; flex-direction: column; gap: 12px;">
+            <!-- Rendered dynamically -->
+          </div>
+        </div>
+
+        <!-- Quick actions -->
+        <div style="border-top: 1px solid rgba(255,255,255,0.08); padding-top: 16px; display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between;">
+          <button type="button" id="btnCopyPrediction" class="btn btn-secondary btn-sm" style="font-size: 0.8rem;">
+            📋 Copy Prediction
+          </button>
+          <a id="btnSaveItem" href="{{ url_for('add') }}" class="btn btn-primary btn-sm" style="font-size: 0.8rem; text-decoration: none;">
+            ＋ Save as Recall Item
+          </a>
+        </div>
+      </div>
+
+    </div>
+
+  </div>
+
+</div>
+
+<style>
+@keyframes pulse {
+  0% { transform: scale(0.95); opacity: 0.7; }
+  50% { transform: scale(1.15); opacity: 1; }
+  100% { transform: scale(0.95); opacity: 0.7; }
+}
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+.drop-zone.drag-active {
+  border-color: var(--accent-purple) !important;
+  background: rgba(124, 92, 252, 0.12) !important;
+}
+.pred-bar-bg {
+  height: 9px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 999px;
+  overflow: hidden;
+  position: relative;
+}
+.pred-bar-fill {
+  height: 100%;
+  border-radius: 999px;
+  transition: width 0.45s cubic-bezier(0.4, 0, 0.2, 1);
+  background: linear-gradient(90deg, var(--accent-purple), var(--accent-blue));
+}
+.pred-bar-fill.top-bar {
+  background: linear-gradient(90deg, var(--accent-teal), #48bb78);
+  box-shadow: 0 0 10px rgba(92,247,212,0.4);
+}
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<!-- TensorFlow.js and Teachable Machine libraries from CDN -->
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@latest/dist/teachablemachine-image.min.js"></script>
+
+<script>
+(function() {
+  'use strict';
+
+  // Path where model files are served
+  const MODEL_URL = "{{ url_for('static', filename='teachable_model/') }}";
+  const modelJSON = MODEL_URL + "model.json";
+  const metadataJSON = MODEL_URL + "metadata.json";
+
+  // Elements
+  const modelStatusBadge = document.getElementById("modelStatusBadge");
+  const modelStatusText = document.getElementById("modelStatusText");
+  const modelErrorBanner = document.getElementById("modelErrorBanner");
+  const modelErrorMessage = document.getElementById("modelErrorMessage");
+  const classesList = document.getElementById("classesList");
+
+  const dropZone = document.getElementById("dropZone");
+  const imageInput = document.getElementById("imageInput");
+  const dropPlaceholder = document.getElementById("dropPlaceholder");
+  const previewContainer = document.getElementById("previewContainer");
+  const imagePreview = document.getElementById("imagePreview");
+  const imageMetaBadge = document.getElementById("imageMetaBadge");
+
+  const btnRecognize = document.getElementById("btnRecognize");
+  const btnIcon = document.getElementById("btnIcon");
+  const btnText = document.getElementById("btnText");
+  const btnClear = document.getElementById("btnClear");
+
+  const resultsIdleState = document.getElementById("resultsIdleState");
+  const resultsLoadingState = document.getElementById("resultsLoadingState");
+  const resultsContent = document.getElementById("resultsContent");
+  const topClassName = document.getElementById("topClassName");
+  const topConfidence = document.getElementById("topConfidence");
+  const predictionBars = document.getElementById("predictionBars");
+  const inferTimeBadge = document.getElementById("inferTimeBadge");
+  const btnCopyPrediction = document.getElementById("btnCopyPrediction");
+  const btnSaveItem = document.getElementById("btnSaveItem");
+
+  let model = null;
+  let maxPredictions = 0;
+  let modelLabels = [];
+  let isImageLoaded = false;
+  let lastTopPrediction = null;
+
+  // 1. Initialize Teachable Machine Model
+  async function loadTeachableModel() {
+    try {
+      if (typeof tmImage === "undefined") {
+        throw new Error("Teachable Machine library failed to load from CDN. Please check your internet connection.");
+      }
+
+      modelStatusText.textContent = "Loading weights & model...";
+
+      // Load model using official teachablemachine-image library
+      model = await tmImage.load(modelJSON, metadataJSON);
+      maxPredictions = model.getTotalClasses();
+      modelLabels = model.getClassLabels();
+
+      // Update status badge to Ready
+      modelStatusBadge.style.background = "rgba(92,247,212,0.15)";
+      modelStatusBadge.style.color = "var(--accent-teal)";
+      const dot = modelStatusBadge.querySelector(".status-dot");
+      if (dot) {
+        dot.style.background = "var(--accent-teal)";
+        dot.style.animation = "none";
+      }
+      modelStatusText.textContent = `Model Ready (${maxPredictions} classes)`;
+
+      // Render class names in the header card
+      classesList.innerHTML = "";
+      modelLabels.forEach(label => {
+        const span = document.createElement("span");
+        span.className = "item-type-badge";
+        span.style.cssText = "font-size: 0.72rem; padding: 3px 8px; border-radius: 6px; background: var(--bg-glass-hover); color: var(--text-primary); text-transform: capitalize;";
+        span.textContent = label.trim();
+        classesList.appendChild(span);
+      });
+
+      // Enable recognize button if image is already picked
+      checkReadyToRecognize();
+
+    } catch (err) {
+      console.error("Model load error:", err);
+      modelStatusBadge.style.background = "rgba(255,75,75,0.15)";
+      modelStatusBadge.style.color = "#ff8585";
+      const dot = modelStatusBadge.querySelector(".status-dot");
+      if (dot) {
+        dot.style.background = "#ff8585";
+        dot.style.animation = "none";
+      }
+      modelStatusText.textContent = "Model Error";
+
+      modelErrorBanner.style.display = "block";
+      modelErrorMessage.innerHTML = `
+        <strong>Error:</strong> ${err.message || err}<br/>
+        Please ensure the files <code>model.json</code>, <code>metadata.json</code>, and <code>weights.bin</code> are present in <code>static/teachable_model/</code>.
+      `;
+    }
+  }
+
+  function checkReadyToRecognize() {
+    if (model && isImageLoaded) {
+      btnRecognize.disabled = false;
+      btnRecognize.style.opacity = "1";
+      btnRecognize.style.cursor = "pointer";
+    } else {
+      btnRecognize.disabled = true;
+      btnRecognize.style.opacity = "0.5";
+      btnRecognize.style.cursor = "not-allowed";
+    }
+  }
+
+  // 2. Handle Image File Selection
+  function handleFile(file) {
+    if (!file || !file.type.startsWith("image/")) {
+      alert("Please select a valid image file (PNG, JPG, WEBP, etc.)");
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = function(e) {
+      imagePreview.src = e.target.result;
+      imagePreview.onload = function() {
+        dropPlaceholder.style.display = "none";
+        previewContainer.style.display = "flex";
+        isImageLoaded = true;
+
+        // Display image metadata
+        const sizeKb = (file.size / 1024).toFixed(1);
+        imageMetaBadge.textContent = `${file.name} (${imagePreview.naturalWidth}x${imagePreview.naturalHeight}px, ${sizeKb} KB)`;
+        imageMetaBadge.style.display = "inline-block";
+
+        checkReadyToRecognize();
+
+        // Clear previous results view if any
+        resultsIdleState.style.display = "flex";
+        resultsLoadingState.style.display = "none";
+        resultsContent.style.display = "none";
+        inferTimeBadge.style.display = "none";
+      };
+    };
+    reader.readAsDataURL(file);
+  }
+
+  // File Input Change
+  imageInput.addEventListener("change", function(e) {
+    if (e.target.files && e.target.files[0]) {
+      handleFile(e.target.files[0]);
+    }
+  });
+
+  // Drag & Drop handlers
+  ["dragenter", "dragover"].forEach(eventName => {
+    dropZone.addEventListener(eventName, function(e) {
+      e.preventDefault();
+      e.stopPropagation();
+      dropZone.classList.add("drag-active");
+    });
+  });
+
+  ["dragleave", "drop"].forEach(eventName => {
+    dropZone.addEventListener(eventName, function(e) {
+      e.preventDefault();
+      e.stopPropagation();
+      dropZone.classList.remove("drag-active");
+    });
+  });
+
+  dropZone.addEventListener("drop", function(e) {
+    const dt = e.dataTransfer;
+    if (dt && dt.files && dt.files.length > 0) {
+      handleFile(dt.files[0]);
+    }
+  });
+
+  // 3. Clear / Reset
+  btnClear.addEventListener("click", function() {
+    imageInput.value = "";
+    imagePreview.src = "";
+    isImageLoaded = false;
+    dropPlaceholder.style.display = "flex";
+    previewContainer.style.display = "none";
+    imageMetaBadge.style.display = "none";
+    resultsIdleState.style.display = "flex";
+    resultsLoadingState.style.display = "none";
+    resultsContent.style.display = "none";
+    inferTimeBadge.style.display = "none";
+    lastTopPrediction = null;
+    checkReadyToRecognize();
+  });
+
+  // 4. Run Image Recognition
+  btnRecognize.addEventListener("click", async function() {
+    if (!model || !isImageLoaded) return;
+
+    try {
+      // Set UI to loading state
+      btnRecognize.disabled = true;
+      btnIcon.textContent = "⏳";
+      btnText.textContent = "Recognizing...";
+      resultsIdleState.style.display = "none";
+      resultsContent.style.display = "none";
+      resultsLoadingState.style.display = "flex";
+
+      const startTime = performance.now();
+
+      // Teachable Machine prediction API
+      // model.predict() takes an HTMLImageElement, HTMLCanvasElement, or HTMLVideoElement
+      const predictions = await model.predict(imagePreview);
+
+      const endTime = performance.now();
+      const inferDuration = Math.round(endTime - startTime);
+
+      // Predictions is an array of { className: string, probability: number }
+      // Sort predictions descending by probability
+      const sorted = [...predictions].sort((a, b) => b.probability - a.probability);
+      const top = sorted[0];
+      lastTopPrediction = top;
+
+      // Update Top Hero Display
+      topClassName.textContent = top.className.trim();
+      topConfidence.textContent = (top.probability * 100).toFixed(1) + "%";
+
+      // Render probability bars for each class
+      predictionBars.innerHTML = "";
+      sorted.forEach((p, index) => {
+        const pct = (p.probability * 100).toFixed(1);
+        const isTop = (index === 0);
+
+        const row = document.createElement("div");
+        row.style.cssText = "display: flex; flex-direction: column; gap: 4px;";
+
+        row.innerHTML = `
+          <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.85rem;">
+            <span style="font-weight: ${isTop ? '700' : '500'}; color: ${isTop ? 'var(--text-primary)' : 'var(--text-secondary)'}; text-transform: capitalize;">
+              ${isTop ? '⭐ ' : ''}${p.className.trim()}
+            </span>
+            <span style="font-weight: 700; color: ${isTop ? 'var(--accent-teal)' : 'var(--text-secondary)'}; font-variant-numeric: tabular-nums;">
+              ${pct}%
+            </span>
+          </div>
+          <div class="pred-bar-bg">
+            <div class="pred-bar-fill ${isTop ? 'top-bar' : ''}" style="width: ${pct}%;"></div>
+          </div>
+        `;
+        predictionBars.appendChild(row);
+      });
+
+      // Show inference duration
+      inferTimeBadge.textContent = `⚡ Inference: ${inferDuration}ms`;
+      inferTimeBadge.style.display = "inline-block";
+
+      // Update Save Item Link
+      const safeTitle = encodeURIComponent(`AI Identified: ${top.className.trim()}`);
+      const safeDesc = encodeURIComponent(`Classified with ${(top.probability * 100).toFixed(1)}% confidence using Teachable Machine model.`);
+      btnSaveItem.href = `{{ url_for('add') }}?title=${safeTitle}&description=${safeDesc}`;
+
+      // Show results view
+      resultsLoadingState.style.display = "none";
+      resultsContent.style.display = "flex";
+
+    } catch (err) {
+      console.error("Prediction error:", err);
+      alert("Error recognizing image: " + (err.message || err));
+      resultsLoadingState.style.display = "none";
+      resultsIdleState.style.display = "flex";
+    } finally {
+      btnIcon.textContent = "⚡";
+      btnText.textContent = "Recognize Image";
+      checkReadyToRecognize();
+    }
+  });
+
+  // 5. Copy prediction helper
+  btnCopyPrediction.addEventListener("click", function() {
+    if (!lastTopPrediction) return;
+    const text = `Teachable Machine Prediction: ${lastTopPrediction.className.trim()} (${(lastTopPrediction.probability * 100).toFixed(1)}% confidence)`;
+    navigator.clipboard.writeText(text).then(() => {
+      const orig = btnCopyPrediction.textContent;
+      btnCopyPrediction.textContent = "✓ Copied!";
+      setTimeout(() => { btnCopyPrediction.textContent = orig; }, 1800);
+    }).catch(err => {
+      console.warn("Clipboard write failed", err);
+    });
+  });
+
+  // Start model loading on page load
+  loadTeachableModel();
+
+})();
+</script>
+{% endblock %}
