@@ -135,17 +135,45 @@ def items():
     params = []
 
     if q:
-        sql += """ AND (
-            title       LIKE ? OR
-            description LIKE ? OR
-            content     LIKE ? OR
-            tags        LIKE ? OR
-            category    LIKE ? OR
-            subcategory LIKE ? OR
-            entities    LIKE ?
-        )"""
-        like = f"%{clean_q}%"
-        params.extend([like, like, like, like, like, like, like])
+        tokens = [t.strip() for t in clean_q.split() if t.strip()]
+        if len(tokens) > 1:
+            clause_parts = []
+            for token in tokens:
+                t_like = f"%{token}%"
+                clause_parts.append("""(
+                    title       LIKE ? OR
+                    description LIKE ? OR
+                    content     LIKE ? OR
+                    tags        LIKE ? OR
+                    category    LIKE ? OR
+                    subcategory LIKE ? OR
+                    entities    LIKE ?
+                )""")
+                params.extend([t_like] * 7)
+            full_like = f"%{clean_q}%"
+            full_clause = """(
+                title       LIKE ? OR
+                description LIKE ? OR
+                content     LIKE ? OR
+                tags        LIKE ? OR
+                category    LIKE ? OR
+                subcategory LIKE ? OR
+                entities    LIKE ?
+            )"""
+            params.extend([full_like] * 7)
+            sql += f" AND (({' AND '.join(clause_parts)}) OR {full_clause})"
+        else:
+            sql += """ AND (
+                title       LIKE ? OR
+                description LIKE ? OR
+                content     LIKE ? OR
+                tags        LIKE ? OR
+                category    LIKE ? OR
+                subcategory LIKE ? OR
+                entities    LIKE ?
+            )"""
+            like = f"%{clean_q}%"
+            params.extend([like] * 7)
 
     if cat:
         sql += " AND category = ?"
@@ -345,8 +373,8 @@ def add():
 
     flash(success_msg, "success")
 
-    # Background AI Tagging - non-blocking so user is redirected immediately
-    if item_type == "image" and _ai_generate_tags and filename:
+    # Background AI Tagging & OCR - non-blocking so user is redirected immediately
+    if item_type == "image" and filename:
         import threading, datetime as _dt
         _filepath_for_bg = os.path.join(UPLOAD_DIR, filename)
         _manual_tags_bg  = list(manual_tags)
@@ -356,7 +384,13 @@ def add():
 
         def _bg_ai_tag():
             try:
-                new_ai_tags = _ai_generate_tags(_filepath_for_bg) or []
+                from ai_tagger import analyze_image
+                ai_data = analyze_image(_filepath_for_bg)
+                new_ai_tags = ai_data.get("tags") or []
+                ai_text = ai_data.get("extracted_text") or ""
+                ai_summary = ai_data.get("summary") or ""
+                ai_cat = ai_data.get("category") or ""
+
                 _seen = set()
                 merged = []
                 for t in (_manual_tags_bg + new_ai_tags):
@@ -370,23 +404,31 @@ def add():
                     (_item_id_bg,)
                 ).fetchone()
                 if _row2:
-                    _text2 = _row2[0] + "\n" + (_row2[1] or '') + "\n" + (_row2[2] or '')
+                    curr_title = _row2[0] or ""
+                    curr_desc  = _row2[1] or ""
+                    curr_cont  = _row2[2] or ""
+
+                    # Populate OCR text and summary if empty (e.g. on Render)
+                    final_cont = curr_cont if curr_cont.strip() else ai_text
+                    final_desc = curr_desc if curr_desc.strip() else ai_summary
+
+                    _text2 = curr_title + "\n" + final_desc + "\n" + final_cont
                     if not _user_cat_bg or _user_cat_bg == "General":
-                        _cr2  = auto_categorize(_row2[0], _text2, tags=merged, tm_label=_tm_label_bg)
-                        _cat2 = _cr2["category"]
+                        _cr2  = auto_categorize(curr_title, _text2, tags=merged, tm_label=_tm_label_bg)
+                        _cat2 = _cr2["category"] if _cr2["category"] != "General" else (ai_cat or "General")
                         _sub2 = _cr2["subcategory"]
                     else:
                         _cat2 = _user_cat_bg
                         _sub2 = ""
                     _now2 = _dt.datetime.utcnow().isoformat()
                     _conn2.execute(
-                        "UPDATE items SET tags=?, category=?, subcategory=?, updated_at=? WHERE id=?",
-                        (json.dumps(merged), _cat2, _sub2, _now2, _item_id_bg)
+                        "UPDATE items SET tags=?, category=?, subcategory=?, content=?, description=?, updated_at=? WHERE id=?",
+                        (json.dumps(merged), _cat2, _sub2, final_cont, final_desc, _now2, _item_id_bg)
                     )
                     _conn2.commit()
                     sync_item_fts(_item_id_bg, _conn2)
                 _conn2.close()
-                print(f"[BG-AI] Tags updated for {_item_id_bg}: {merged[:5]}")
+                print(f"[BG-AI] AI tagging completed for {_item_id_bg}: {len(merged)} tags, {len(final_cont)} chars text")
             except Exception as _bg_err:
                 print(f"[BG-AI] Failed for {_item_id_bg}: {_bg_err}")
 
@@ -530,13 +572,28 @@ def api_search():
         return jsonify([])
     clean_q = q.lstrip('#').strip()
     conn = get_db()
-    like = f"%{clean_q}%"
-    rows = conn.execute("""
+    tokens = [t.strip() for t in clean_q.split() if t.strip()]
+    params = []
+    if len(tokens) > 1:
+        clause_parts = []
+        for token in tokens:
+            t_like = f"%{token}%"
+            clause_parts.append("(title LIKE ? OR description LIKE ? OR content LIKE ? OR tags LIKE ? OR category LIKE ? OR subcategory LIKE ?)")
+            params.extend([t_like] * 6)
+        full_like = f"%{clean_q}%"
+        params.extend([full_like] * 6)
+        where_sql = f"(({' AND '.join(clause_parts)}) OR (title LIKE ? OR description LIKE ? OR content LIKE ? OR tags LIKE ? OR category LIKE ? OR subcategory LIKE ?))"
+    else:
+        like = f"%{clean_q}%"
+        where_sql = "(title LIKE ? OR description LIKE ? OR content LIKE ? OR tags LIKE ? OR category LIKE ? OR subcategory LIKE ?)"
+        params = [like] * 6
+
+    rows = conn.execute(f"""
         SELECT id, type, title, filename, category, subcategory, tags, content, description
         FROM items
-        WHERE title LIKE ? OR description LIKE ? OR content LIKE ? OR tags LIKE ? OR category LIKE ? OR subcategory LIKE ?
+        WHERE {where_sql}
         ORDER BY created_at DESC LIMIT 8
-    """, (like, like, like, like, like, like)).fetchall()
+    """, params).fetchall()
     
     results = []
     for r in rows:
@@ -552,6 +609,53 @@ def api_search():
         
     conn.close()
     return jsonify(results)
+
+
+@app.route("/item/<item_id>/ai-retag", methods=["POST"])
+def retag_item(item_id):
+    conn = get_db()
+    row = conn.execute("SELECT * FROM items WHERE id=?", (item_id,)).fetchone()
+    if not row:
+        conn.close()
+        abort(404)
+    item = row_to_dict(row)
+    if item["type"] != "image" or not item["filename"]:
+        conn.close()
+        flash("AI analysis is only available for images.", "warning")
+        return redirect(url_for("view_item", item_id=item_id))
+
+    filepath = os.path.join(UPLOAD_DIR, item["filename"])
+    from ai_tagger import analyze_image
+    ai_data = analyze_image(filepath)
+
+    new_tags = ai_data.get("tags") or []
+    ai_text = ai_data.get("extracted_text") or ""
+    ai_summary = ai_data.get("summary") or ""
+    ai_cat = ai_data.get("category") or "General"
+
+    existing_tags = item.get("tags") or []
+    _seen = set()
+    merged = []
+    for t in (existing_tags + new_tags):
+        n = t.strip().lstrip("#").lower()
+        if n and n not in _seen:
+            _seen.add(n)
+            merged.append(n)
+
+    final_cont = item["content"] if (item["content"] and item["content"].strip()) else ai_text
+    final_desc = item["description"] if (item["description"] and item["description"].strip()) else ai_summary
+    final_cat = item["category"] if (item["category"] and item["category"] != "General") else ai_cat
+
+    now_ts = datetime.utcnow().isoformat()
+    conn.execute(
+        "UPDATE items SET tags=?, content=?, description=?, category=?, updated_at=? WHERE id=?",
+        (json.dumps(merged), final_cont, final_desc, final_cat, now_ts, item_id)
+    )
+    conn.commit()
+    sync_item_fts(item_id, conn)
+    conn.close()
+    flash(f"Gemini AI analyzed image! Added #{', #'.join(new_tags[:4])}", "success")
+    return redirect(url_for("view_item", item_id=item_id))
 
 
 @app.route("/recognise")

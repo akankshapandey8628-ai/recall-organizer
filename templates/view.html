@@ -269,6 +269,13 @@
         <a href="{{ url_for('add') }}" class="btn btn-primary" style="justify-content:center;">
           ＋ Add New
         </a>
+        {% if item.type == 'image' %}
+        <form method="POST" action="{{ url_for('retag_item', item_id=item.id) }}">
+          <button type="submit" class="btn btn-secondary w-full" style="justify-content:center;color:#a594fd;border-color:rgba(165,148,253,0.35);background:rgba(165,148,253,0.06);">
+            ✨ AI Auto-Tag & Read Text
+          </button>
+        </form>
+        {% endif %}
         <form method="POST" action="{{ url_for('delete_item', item_id=item.id) }}" id="deleteFormPanel">
           <button type="button" class="btn btn-danger delete-trigger w-full"
                   data-form-id="deleteFormPanel" style="justify-content:center;">
