@@ -4,7 +4,4 @@ venv/
 .venv/
 env/
 .env
-uploads/
-*.db
-*.sqlite3
 .vscode/

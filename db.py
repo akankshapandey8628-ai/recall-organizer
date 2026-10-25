@@ -86,7 +86,21 @@ def init_db():
                 SELECT id, user_id, title, description, content, tags, category, subcategory, entities FROM items
             """)
     except Exception as e:
-        print(f"FTS init: {e}")
+        print(f"FTS init: {e}")    # Ensure default owner user exists so Render restarts never lose access
+    owner = c.execute("SELECT id FROM users WHERE email='n7159852@gmail.com'").fetchone()
+    if not owner:
+        try:
+            from werkzeug.security import generate_password_hash
+            from datetime import datetime
+            owner_id = '4203e460-4f9b-4a6e-ada6-e7c82a8da688'
+            c.execute(
+                "INSERT OR IGNORE INTO users (id, email, username, password_hash, created_at) VALUES (?, ?, ?, ?, ?)",
+                (owner_id, 'n7159852@gmail.com', 'akku', generate_password_hash('123456'), datetime.now().isoformat())
+            )
+            c.execute("UPDATE items SET user_id=? WHERE user_id='' OR user_id IS NULL", (owner_id,))
+        except Exception as e:
+            print(f'Seed owner error: {e}')
+
 
     conn.commit()
     conn.close()

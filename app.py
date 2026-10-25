@@ -67,7 +67,7 @@ def get_current_user():
 def inject_user():
     return {"current_user": get_current_user()}
 
-EXEMPT_ENDPOINTS = {"login", "register", "static"}
+EXEMPT_ENDPOINTS = {"login", "register", "static", "ping"}
 
 @app.before_request
 def require_login():
@@ -84,6 +84,9 @@ def require_login():
         return redirect(url_for("login", next=request.full_path if request.method == "GET" else None))
 
 
+@app.route("/ping")
+def ping():
+    return jsonify({"status": "alive", "service": "recall"}), 200
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if session.get("user_id"):
@@ -99,17 +102,44 @@ def login():
             "SELECT * FROM users WHERE LOWER(email)=? OR LOWER(username)=?",
             (login_id, login_id)
         ).fetchone()
-        conn.close()
-        if not user or not check_password_hash(user["password_hash"], password):
+
+        # If user not found (e.g. Render container restart), auto-register owner or first user
+        if not user:
+            user_count = conn.execute("SELECT COUNT(*) FROM users").fetchone()[0]
+            if user_count == 0 or login_id in ("n7159852@gmail.com", "akku"):
+                user_id = str(uuid.uuid4())
+                pw_hash = generate_password_hash(password)
+                uname = "akku" if login_id in ("n7159852@gmail.com", "akku") else login_id.split("@")[0]
+                uemail = "n7159852@gmail.com" if login_id in ("n7159852@gmail.com", "akku") else (login_id if "@" in login_id else f"{login_id}@recall.local")
+                conn.execute(
+                    "INSERT INTO users (id, email, username, password_hash, created_at) VALUES (?, ?, ?, ?, ?)",
+                    (user_id, uemail, uname, pw_hash, now_iso())
+                )
+                conn.execute("UPDATE items SET user_id=? WHERE user_id='' OR user_id IS NULL", (user_id,))
+                conn.commit()
+                user = conn.execute("SELECT * FROM users WHERE id=?", (user_id,)).fetchone()
+
+        if not user:
+            conn.close()
             flash("Invalid email/username or password.", "error")
             return render_template("login.html")
+
+        # Check password or auto-update for owner so they are never locked out
+        if not check_password_hash(user["password_hash"], password):
+            if login_id in ("n7159852@gmail.com", "akku") or user["email"] == "n7159852@gmail.com":
+                new_hash = generate_password_hash(password)
+                conn.execute("UPDATE users SET password_hash=? WHERE id=?", (new_hash, user["id"]))
+                conn.commit()
+            else:
+                conn.close()
+                flash("Invalid email/username or password.", "error")
+                return render_template("login.html")
 
         session.permanent = True
         session["user_id"] = user["id"]
         session["username"] = user["username"]
 
         # Ensure any orphan items in DB are assigned to logged-in user
-        conn = get_db()
         conn.execute("UPDATE items SET user_id=? WHERE user_id='' OR user_id IS NULL", (user["id"],))
         conn.commit()
         conn.close()
@@ -119,6 +149,7 @@ def login():
         if next_url and next_url.startswith("/") and not next_url.startswith("//"):
             return redirect(next_url)
         return redirect(url_for("index"))
+
     return render_template("login.html")
 
 
@@ -393,7 +424,7 @@ def add():
     description     = request.form.get("description", "").strip()
     user_category   = request.form.get("category", "").strip()
     tags_raw        = request.form.get("tags", "").strip()
-    favourite       = 1 if request.form.get("favourite") else 0
+    favourite = 1 if request.form.get("favourite") == "1" else 0
     tm_label        = request.form.get("tm_label", "").strip()
 
     if not title:
@@ -606,7 +637,7 @@ def edit_item(item_id):
         category    = request.form.get("category", "General").strip() or "General"
         subcategory = request.form.get("subcategory", "").strip()
         tags_raw    = request.form.get("tags", "").strip()
-        favourite   = 1 if request.form.get("favourite") else 0
+        favourite = 1 if request.form.get("favourite") == "1" else 0
         content     = request.form.get("content", item["content"] or "").strip()
         url         = request.form.get("url", item["url"] or "").strip()
 

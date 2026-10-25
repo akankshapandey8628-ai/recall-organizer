@@ -58,19 +58,7 @@
       </div>
       <div class="stat-value">{{ stats.pdfs if stats.pdfs is defined else 0 }}</div>
       <div class="stat-label">PDFs</div>
-    </a>
-
-    <!-- Favourites -->
-    <a href="{{ url_for('items') }}?favourites=1" class="stat-card orange" style="text-decoration:none;display:block;cursor:pointer;" title="View favourite items">
-      <div style="display:flex;justify-content:space-between;align-items:flex-start;">
-        <div class="stat-icon">⭐</div>
-        <span style="font-size:11px;color:#f7c948;font-weight:600;">View →</span>
-      </div>
-      <div class="stat-value">{{ stats.favourites }}</div>
-      <div class="stat-label">Favourites</div>
-    </a>
-
-  </div>
+    </a></div>
 </section>
 
 <!-- Upcoming Deadlines & AI Reminders (if any) -->
@@ -113,21 +101,6 @@
       <div class="cat-count">{{ cat.cnt }}</div>
       <div class="cat-name">{{ cat.category }}</div>
     </a>
-    {% endfor %}
-  </div>
-</section>
-{% endif %}
-
-<!-- Favourites -->
-{% if fav_items %}
-<section class="page-section">
-  <div class="section-header">
-    <div class="section-title"><span class="s-icon">⭐</span> Favourites</div>
-    <a href="{{ url_for('items') }}?favourites=1" class="section-link">View all →</a>
-  </div>
-  <div class="items-grid">
-    {% for item in fav_items %}
-      {% include "_item_card.html" %}
     {% endfor %}
   </div>
 </section>
