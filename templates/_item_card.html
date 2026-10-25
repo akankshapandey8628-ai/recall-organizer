@@ -10,7 +10,7 @@
     <button class="fav-star {% if item.favourite %}active{% endif %}"
             data-item-id="{{ item.id }}"
             title="Toggle favourite">
-      {% if item.favourite %}⭐{% else %}☆{% endif %}
+      {% if item.favourite %}★{% else %}☆{% endif %}
     </button>
   </div>
 
@@ -30,6 +30,7 @@
   </div>
   {% endif %}
 
+  {% if item.type != 'image' %}
   <div class="item-title" style="cursor:pointer;">{{ item.title }}</div>
 
   {% if item.description %}
@@ -67,4 +68,5 @@
     </div>
     <span>{{ item.created_at[:10] }}</span>
   </div>
+  {% endif %}
 </div>
