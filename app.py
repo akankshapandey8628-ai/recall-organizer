@@ -76,7 +76,9 @@ def require_login():
         return None
     if endpoint in EXEMPT_ENDPOINTS or endpoint.startswith("static"):
         return None
-    if not session.get("user_id"):
+    user = get_current_user()
+    if not user:
+        session.clear()
         if request.path.startswith("/api/"):
             return jsonify({"error": "Unauthorized"}), 401
         return redirect(url_for("login", next=request.full_path if request.method == "GET" else None))
@@ -105,6 +107,13 @@ def login():
         session.permanent = True
         session["user_id"] = user["id"]
         session["username"] = user["username"]
+
+        # Ensure any orphan items in DB are assigned to logged-in user
+        conn = get_db()
+        conn.execute("UPDATE items SET user_id=? WHERE user_id='' OR user_id IS NULL", (user["id"],))
+        conn.commit()
+        conn.close()
+
         flash(f"Welcome back, {user['username']}!", "success")
         next_url = request.form.get("next") or request.args.get("next")
         if next_url and next_url.startswith("/") and not next_url.startswith("//"):
