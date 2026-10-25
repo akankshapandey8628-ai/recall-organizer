@@ -275,18 +275,10 @@ def add():
         filepath = os.path.join(UPLOAD_DIR, filename)
         file.save(filepath)
 
-        # Run OCR and AI tagging in PARALLEL (saves 5-15 seconds on image upload)
+        # OCR runs sync (fast ~1s). AI tagging runs async AFTER save so user is not blocked.
         if item_type == "image":
-            with concurrent.futures.ThreadPoolExecutor(max_workers=2) as _pool:
-                _ocr_fut = _pool.submit(extract_text_from_image, filepath)
-                _ai_fut  = _pool.submit(_ai_generate_tags, filepath) if _ai_generate_tags else None
-                content  = _ocr_fut.result()
-                if _ai_fut:
-                    try:
-                        ai_tags = _ai_fut.result() or []
-                    except Exception as _ai_tag_err:
-                        print(f"AI tagging failed (non-fatal): {_ai_tag_err}")
-                        ai_tags = []
+            content = extract_text_from_image(filepath)
+            ai_tags = []   # filled by background thread after redirect
         else:
             content = extract_text_from_pdf(filepath)
 
@@ -352,6 +344,54 @@ def add():
         success_msg += f' (Note: Similar content already exists in "{existing_dup["title"]}")'
 
     flash(success_msg, "success")
+
+    # Background AI Tagging - non-blocking so user is redirected immediately
+    if item_type == "image" and _ai_generate_tags and filename:
+        import threading, datetime as _dt
+        _filepath_for_bg = os.path.join(UPLOAD_DIR, filename)
+        _manual_tags_bg  = list(manual_tags)
+        _user_cat_bg     = user_category
+        _tm_label_bg     = tm_label
+        _item_id_bg      = item_id
+
+        def _bg_ai_tag():
+            try:
+                new_ai_tags = _ai_generate_tags(_filepath_for_bg) or []
+                _seen = set()
+                merged = []
+                for t in (_manual_tags_bg + new_ai_tags):
+                    n = t.strip().lstrip("#").lower()
+                    if n and n not in _seen:
+                        _seen.add(n)
+                        merged.append(n)
+                _conn2 = get_db()
+                _row2  = _conn2.execute(
+                    "SELECT title, description, content FROM items WHERE id=?",
+                    (_item_id_bg,)
+                ).fetchone()
+                if _row2:
+                    _text2 = _row2[0] + "\n" + (_row2[1] or '') + "\n" + (_row2[2] or '')
+                    if not _user_cat_bg or _user_cat_bg == "General":
+                        _cr2  = auto_categorize(_row2[0], _text2, tags=merged, tm_label=_tm_label_bg)
+                        _cat2 = _cr2["category"]
+                        _sub2 = _cr2["subcategory"]
+                    else:
+                        _cat2 = _user_cat_bg
+                        _sub2 = ""
+                    _now2 = _dt.datetime.utcnow().isoformat()
+                    _conn2.execute(
+                        "UPDATE items SET tags=?, category=?, subcategory=?, updated_at=? WHERE id=?",
+                        (json.dumps(merged), _cat2, _sub2, _now2, _item_id_bg)
+                    )
+                    _conn2.commit()
+                    sync_item_fts(_item_id_bg, _conn2)
+                _conn2.close()
+                print(f"[BG-AI] Tags updated for {_item_id_bg}: {merged[:5]}")
+            except Exception as _bg_err:
+                print(f"[BG-AI] Failed for {_item_id_bg}: {_bg_err}")
+
+        threading.Thread(target=_bg_ai_tag, daemon=True).start()
+
     return redirect(url_for("view_item", item_id=item_id))
 
 
