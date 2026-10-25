@@ -7,8 +7,10 @@ import concurrent.futures
 from datetime import datetime
 from flask import (
     Flask, render_template, request, redirect, url_for,
-    flash, jsonify, send_from_directory, abort
+    flash, jsonify, send_from_directory, abort, session
 )
+from werkzeug.security import generate_password_hash, check_password_hash
+from datetime import timedelta
 from werkzeug.utils import secure_filename
 
 # Modular pipeline imports
@@ -34,7 +36,8 @@ UPLOAD_DIR = os.path.join(BASE_DIR, "uploads")
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 app = Flask(__name__)
-app.secret_key = "recall-secret-key-2024"
+app.secret_key = os.getenv("SECRET_KEY", "recall-secret-key-2024-secure-v2")
+app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(days=30)
 app.config["UPLOAD_FOLDER"] = UPLOAD_DIR
 app.config["MAX_CONTENT_LENGTH"] = MAX_CONTENT_MB * 1024 * 1024
 
@@ -50,37 +53,164 @@ def add_cache_control_headers(response):
 
 init_db()
 
+# ── Authentication & User Session Helpers ────────────────────
+def get_current_user():
+    user_id = session.get("user_id")
+    if not user_id:
+        return None
+    conn = get_db()
+    row = conn.execute("SELECT id, email, username, created_at FROM users WHERE id=?", (user_id,)).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+@app.context_processor
+def inject_user():
+    return {"current_user": get_current_user()}
+
+EXEMPT_ENDPOINTS = {"login", "register", "static"}
+
+@app.before_request
+def require_login():
+    endpoint = request.endpoint
+    if not endpoint:
+        return None
+    if endpoint in EXEMPT_ENDPOINTS or endpoint.startswith("static"):
+        return None
+    if not session.get("user_id"):
+        if request.path.startswith("/api/"):
+            return jsonify({"error": "Unauthorized"}), 401
+        return redirect(url_for("login", next=request.full_path if request.method == "GET" else None))
+
+
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    if session.get("user_id"):
+        return redirect(url_for("index"))
+    if request.method == "POST":
+        login_id = request.form.get("login_id", "").strip().lower()
+        password = request.form.get("password", "")
+        if not login_id or not password:
+            flash("Please enter your email/username and password.", "error")
+            return render_template("login.html")
+        conn = get_db()
+        user = conn.execute(
+            "SELECT * FROM users WHERE LOWER(email)=? OR LOWER(username)=?",
+            (login_id, login_id)
+        ).fetchone()
+        conn.close()
+        if not user or not check_password_hash(user["password_hash"], password):
+            flash("Invalid email/username or password.", "error")
+            return render_template("login.html")
+
+        session.permanent = True
+        session["user_id"] = user["id"]
+        session["username"] = user["username"]
+        flash(f"Welcome back, {user['username']}!", "success")
+        next_url = request.form.get("next") or request.args.get("next")
+        if next_url and next_url.startswith("/") and not next_url.startswith("//"):
+            return redirect(next_url)
+        return redirect(url_for("index"))
+    return render_template("login.html")
+
+
+@app.route("/register", methods=["GET", "POST"])
+def register():
+    if session.get("user_id"):
+        return redirect(url_for("index"))
+    if request.method == "POST":
+        username = request.form.get("username", "").strip()
+        email = request.form.get("email", "").strip().lower()
+        password = request.form.get("password", "")
+        confirm = request.form.get("confirm_password", "")
+
+        if not username or not email or not password:
+            flash("All fields are required.", "error")
+            return render_template("register.html")
+        if len(password) < 6:
+            flash("Password must be at least 6 characters long.", "error")
+            return render_template("register.html")
+        if password != confirm:
+            flash("Passwords do not match.", "error")
+            return render_template("register.html")
+
+        conn = get_db()
+        existing = conn.execute(
+            "SELECT id FROM users WHERE LOWER(email)=? OR LOWER(username)=?",
+            (email, username.lower())
+        ).fetchone()
+        if existing:
+            conn.close()
+            flash("An account with this email or username already exists. Please sign in.", "error")
+            return render_template("register.html")
+
+        user_id = str(uuid.uuid4())
+        pw_hash = generate_password_hash(password)
+        created_at = datetime.utcnow().isoformat()
+        conn.execute(
+            "INSERT INTO users (id, email, username, password_hash, created_at) VALUES (?, ?, ?, ?, ?)",
+            (user_id, email, username, pw_hash, created_at)
+        )
+
+        # Migration: Assign orphan items to the first registered user
+        user_count = conn.execute("SELECT COUNT(*) FROM users").fetchone()[0]
+        if user_count == 1:
+            conn.execute("UPDATE items SET user_id=? WHERE user_id='' OR user_id IS NULL", (user_id,))
+            try:
+                conn.execute("UPDATE items_fts SET user_id=? WHERE user_id='' OR user_id IS NULL", (user_id,))
+            except Exception:
+                pass
+
+        conn.commit()
+        conn.close()
+
+        session.permanent = True
+        session["user_id"] = user_id
+        session["username"] = username
+        flash(f"Account created successfully! Welcome to Recall, {username}!", "success")
+        return redirect(url_for("index"))
+    return render_template("register.html")
+
+
+@app.route("/logout")
+def logout():
+    session.clear()
+    flash("You have been signed out.", "success")
+    return redirect(url_for("login"))
+
+
 @app.route("/")
 def index():
+    user_id = session.get("user_id")
     conn = get_db()
     c = conn.cursor()
 
-    # Core stats
-    total = c.execute("SELECT COUNT(*) FROM items").fetchone()[0]
-    notes = c.execute("SELECT COUNT(*) FROM items WHERE type='note'").fetchone()[0]
-    links = c.execute("SELECT COUNT(*) FROM items WHERE type='link'").fetchone()[0]
-    images = c.execute("SELECT COUNT(*) FROM items WHERE type='image'").fetchone()[0]
-    pdfs = c.execute("SELECT COUNT(*) FROM items WHERE type='pdf'").fetchone()[0]
-    files = c.execute("SELECT COUNT(*) FROM items WHERE type IN ('image','pdf')").fetchone()[0]
-    favourites = c.execute("SELECT COUNT(*) FROM items WHERE favourite=1").fetchone()[0]
+    # Core stats for logged-in user
+    total = c.execute("SELECT COUNT(*) FROM items WHERE user_id=?", (user_id,)).fetchone()[0]
+    notes = c.execute("SELECT COUNT(*) FROM items WHERE type='note' AND user_id=?", (user_id,)).fetchone()[0]
+    links = c.execute("SELECT COUNT(*) FROM items WHERE type='link' AND user_id=?", (user_id,)).fetchone()[0]
+    images = c.execute("SELECT COUNT(*) FROM items WHERE type='image' AND user_id=?", (user_id,)).fetchone()[0]
+    pdfs = c.execute("SELECT COUNT(*) FROM items WHERE type='pdf' AND user_id=?", (user_id,)).fetchone()[0]
+    files = c.execute("SELECT COUNT(*) FROM items WHERE type IN ('image','pdf') AND user_id=?", (user_id,)).fetchone()[0]
+    favourites = c.execute("SELECT COUNT(*) FROM items WHERE favourite=1 AND user_id=?", (user_id,)).fetchone()[0]
 
     # Category distribution for cards & chart
     cats_raw = c.execute(
-        "SELECT category, COUNT(*) as cnt FROM items GROUP BY category ORDER BY cnt DESC"
+        "SELECT category, COUNT(*) as cnt FROM items WHERE user_id=? GROUP BY category ORDER BY cnt DESC",
+        (user_id,)
     ).fetchall()
     cats = [{"category": r["category"], "cnt": r["cnt"]} for r in cats_raw]
 
     # Recent items
     recent = [row_to_dict(r) for r in
-              c.execute("SELECT * FROM items ORDER BY created_at DESC LIMIT 8").fetchall()]
+              c.execute("SELECT * FROM items WHERE user_id=? ORDER BY created_at DESC LIMIT 8", (user_id,)).fetchall()]
 
     # Favourite items
     fav_items = [row_to_dict(r) for r in
-                 c.execute("SELECT * FROM items WHERE favourite=1 ORDER BY created_at DESC LIMIT 6").fetchall()]
+                 c.execute("SELECT * FROM items WHERE favourite=1 AND user_id=? ORDER BY created_at DESC LIMIT 6", (user_id,)).fetchall()]
 
     # Upcoming Deadlines / Events extracted from entities
     deadline_items = []
-    all_rows = c.execute("SELECT * FROM items WHERE entities LIKE '%is_future%'").fetchall()
+    all_rows = c.execute("SELECT * FROM items WHERE user_id=? AND entities LIKE '%is_future%'", (user_id,)).fetchall()
     for row in all_rows:
         item_dict = row_to_dict(row)
         ents = item_dict.get("entities", {})
@@ -119,6 +249,7 @@ def index():
 
 @app.route("/items")
 def items():
+    user_id = session.get("user_id")
     conn = get_db()
     c = conn.cursor()
 
@@ -130,9 +261,9 @@ def items():
     fav_only  = request.args.get("favourites", "") == "1"
     sort      = request.args.get("sort", "newest")
 
-    # If search query present, search across all relevant fields
-    sql = "SELECT * FROM items WHERE 1=1"
-    params = []
+    # If search query present, search across user's items
+    sql = "SELECT * FROM items WHERE user_id = ?"
+    params = [user_id]
 
     if q:
         tokens = [t.strip() for t in clean_q.split() if t.strip()]
@@ -200,7 +331,7 @@ def items():
     sql += f" ORDER BY {order_map.get(sort, 'created_at DESC')}"
 
     rows = [row_to_dict(r) for r in c.execute(sql, params).fetchall()]
-    cats = [r[0] for r in c.execute("SELECT DISTINCT category FROM items ORDER BY category").fetchall()]
+    cats = [r[0] for r in c.execute("SELECT DISTINCT category FROM items WHERE user_id=? ORDER BY category", (user_id,)).fetchall()]
     conn.close()
 
     return render_template(
@@ -218,6 +349,7 @@ def items():
 
 @app.route("/add", methods=["GET", "POST"])
 def add():
+    user_id = session.get("user_id")
     if request.method == "GET":
         item_type = request.args.get("type", "image")
         return redirect(url_for("index", add=1, type=item_type))
@@ -322,8 +454,8 @@ def add():
     conn = get_db()
     c = conn.cursor()
     existing_dup = c.execute(
-        "SELECT id, title FROM items WHERE content_hash = ? AND content_hash != '' LIMIT 1",
-        (content_hash,)
+        "SELECT id, title FROM items WHERE content_hash = ? AND content_hash != '' AND user_id = ? LIMIT 1",
+        (content_hash, user_id)
     ).fetchone()
 
     # 2. Entity Extraction
@@ -347,15 +479,15 @@ def add():
     category = user_category if (user_category and user_category != "General") else cat_result["category"]
     subcategory = cat_result["subcategory"]
 
-    # Insert into Database
+    # Insert into Database with user_id
     c.execute("""
         INSERT INTO items (
-            id, type, title, description, content, url, filename,
+            id, user_id, type, title, description, content, url, filename,
             tags, category, subcategory, entities, content_hash,
             favourite, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """, (
-        item_id, item_type, title, description, content, url, filename,
+        item_id, user_id, item_type, title, description, content, url, filename,
         json.dumps(combined_tags), category, subcategory, json.dumps(entities),
         content_hash, favourite, ts, ts
     ))
@@ -439,8 +571,9 @@ def add():
 
 @app.route("/item/<item_id>")
 def view_item(item_id):
+    user_id = session.get("user_id")
     conn = get_db()
-    row  = conn.execute("SELECT * FROM items WHERE id=?", (item_id,)).fetchone()
+    row  = conn.execute("SELECT * FROM items WHERE id=? AND user_id=?", (item_id, user_id)).fetchone()
     conn.close()
     if not row:
         abort(404)
@@ -450,8 +583,9 @@ def view_item(item_id):
 
 @app.route("/item/<item_id>/edit", methods=["GET", "POST"])
 def edit_item(item_id):
+    user_id = session.get("user_id")
     conn = get_db()
-    row  = conn.execute("SELECT * FROM items WHERE id=?", (item_id,)).fetchone()
+    row  = conn.execute("SELECT * FROM items WHERE id=? AND user_id=?", (item_id, user_id)).fetchone()
     if not row:
         conn.close()
         abort(404)
@@ -501,11 +635,11 @@ def edit_item(item_id):
             SET title=?, description=?, content=?, url=?, filename=?,
                 tags=?, category=?, subcategory=?, entities=?,
                 content_hash=?, favourite=?, updated_at=?
-            WHERE id=?
+            WHERE id=? AND user_id=?
         """, (
             title, description, content, url, new_filename,
             json.dumps(tags), category, subcategory, json.dumps(entities),
-            content_hash, favourite, ts, item_id
+            content_hash, favourite, ts, item_id, user_id
         ))
         conn.commit()
         sync_item_fts(item_id, conn)
@@ -520,8 +654,9 @@ def edit_item(item_id):
 
 @app.route("/item/<item_id>/delete", methods=["POST"])
 def delete_item(item_id):
+    user_id = session.get("user_id")
     conn = get_db()
-    row  = conn.execute("SELECT * FROM items WHERE id=?", (item_id,)).fetchone()
+    row  = conn.execute("SELECT * FROM items WHERE id=? AND user_id=?", (item_id, user_id)).fetchone()
     if not row:
         conn.close()
         abort(404)
@@ -535,7 +670,7 @@ def delete_item(item_id):
             except Exception:
                 pass
 
-    conn.execute("DELETE FROM items WHERE id=?", (item_id,))
+    conn.execute("DELETE FROM items WHERE id=? AND user_id=?", (item_id, user_id))
     conn.commit()
     delete_item_fts(item_id, conn)
     conn.close()
@@ -546,14 +681,15 @@ def delete_item(item_id):
 
 @app.route("/item/<item_id>/favourite", methods=["POST"])
 def toggle_favourite(item_id):
+    user_id = session.get("user_id")
     conn = get_db()
-    row  = conn.execute("SELECT favourite FROM items WHERE id=?", (item_id,)).fetchone()
+    row  = conn.execute("SELECT favourite FROM items WHERE id=? AND user_id=?", (item_id, user_id)).fetchone()
     if not row:
         conn.close()
         abort(404)
     new_fav = 0 if row["favourite"] else 1
-    conn.execute("UPDATE items SET favourite=?, updated_at=? WHERE id=?",
-                 (new_fav, now_iso(), item_id))
+    conn.execute("UPDATE items SET favourite=?, updated_at=? WHERE id=? AND user_id=?",
+                 (new_fav, now_iso(), item_id, user_id))
     conn.commit()
     conn.close()
     return jsonify({"favourite": new_fav})
@@ -561,12 +697,19 @@ def toggle_favourite(item_id):
 
 @app.route("/uploads/<filename>")
 def uploaded_file(filename):
+    user_id = session.get("user_id")
     filename = secure_filename(filename)
+    conn = get_db()
+    item = conn.execute("SELECT id FROM items WHERE filename=? AND user_id=?", (filename, user_id)).fetchone()
+    conn.close()
+    if not item:
+        abort(404)
     return send_from_directory(UPLOAD_DIR, filename)
 
 
 @app.route("/api/search")
 def api_search():
+    user_id = session.get("user_id")
     q = request.args.get("q", "").strip()
     if not q:
         return jsonify([])
@@ -588,12 +731,13 @@ def api_search():
         where_sql = "(title LIKE ? OR description LIKE ? OR content LIKE ? OR tags LIKE ? OR category LIKE ? OR subcategory LIKE ?)"
         params = [like] * 6
 
+    final_params = [user_id] + params
     rows = conn.execute(f"""
         SELECT id, type, title, filename, category, subcategory, tags, content, description
         FROM items
-        WHERE {where_sql}
+        WHERE user_id = ? AND ({where_sql})
         ORDER BY created_at DESC LIMIT 8
-    """, params).fetchall()
+    """, final_params).fetchall()
     
     results = []
     for r in rows:
@@ -613,8 +757,9 @@ def api_search():
 
 @app.route("/item/<item_id>/ai-retag", methods=["POST"])
 def retag_item(item_id):
+    user_id = session.get("user_id")
     conn = get_db()
-    row = conn.execute("SELECT * FROM items WHERE id=?", (item_id,)).fetchone()
+    row = conn.execute("SELECT * FROM items WHERE id=? AND user_id=?", (item_id, user_id)).fetchone()
     if not row:
         conn.close()
         abort(404)
@@ -648,8 +793,8 @@ def retag_item(item_id):
 
     now_ts = datetime.utcnow().isoformat()
     conn.execute(
-        "UPDATE items SET tags=?, content=?, description=?, category=?, updated_at=? WHERE id=?",
-        (json.dumps(merged), final_cont, final_desc, final_cat, now_ts, item_id)
+        "UPDATE items SET tags=?, content=?, description=?, category=?, updated_at=? WHERE id=? AND user_id=?",
+        (json.dumps(merged), final_cont, final_desc, final_cat, now_ts, item_id, user_id)
     )
     conn.commit()
     sync_item_fts(item_id, conn)

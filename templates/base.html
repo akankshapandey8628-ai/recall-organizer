@@ -66,6 +66,24 @@
   </nav>
 
   <div class="sidebar-footer">
+    {% if current_user %}
+    <div style="padding:10px 12px;margin-bottom:10px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:12px;display:flex;align-items:center;justify-content:space-between;">
+      <div style="display:flex;align-items:center;gap:9px;overflow:hidden;">
+        <div style="width:28px;height:28px;border-radius:50%;background:linear-gradient(135deg,#7c5cfc,#f75cb2);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:12px;color:#fff;flex-shrink:0;">
+          {{ (current_user.username[0] if current_user.username else 'U')|upper }}
+        </div>
+        <div style="overflow:hidden;">
+          <div style="font-size:12px;font-weight:600;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+            {{ current_user.username }}
+          </div>
+          <div style="font-size:10px;color:#8f8ba3;">Private Vault</div>
+        </div>
+      </div>
+      <a href="{{ url_for('logout') }}" title="Sign Out" style="color:#ff8585;text-decoration:none;font-size:11px;padding:4px 8px;background:rgba(247,92,92,0.1);border-radius:6px;font-weight:600;">
+        Logout
+      </a>
+    </div>
+    {% endif %}
     <button type="button" class="add-btn" onclick="openQuickAdd()" style="width:100%;border:none;cursor:pointer;">
       <span style="font-size:18px;">＋</span> Add New Item
     </button>
@@ -97,7 +115,13 @@
       </form>
     </div>
 
-    <div class="topbar-actions" style="flex-shrink:0;">
+    <div class="topbar-actions" style="flex-shrink:0;display:flex;align-items:center;gap:10px;">
+      {% if current_user %}
+      <div style="display:inline-flex;align-items:center;gap:8px;padding:6px 12px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:20px;font-size:12px;">
+        <span style="color:#a594fd;font-weight:600;">👤 {{ current_user.username }}</span>
+        <a href="{{ url_for('logout') }}" style="color:#ff8585;text-decoration:none;font-size:11px;font-weight:600;margin-left:4px;" title="Sign out">Logout</a>
+      </div>
+      {% endif %}
       {% block topbar_actions %}
       <button type="button" class="btn btn-primary btn-sm" onclick="openQuickAdd()" id="topbarAddBtn">
         ＋ New Item

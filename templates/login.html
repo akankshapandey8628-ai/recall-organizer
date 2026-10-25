@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sign In — Recall Digital Life Organizer</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+  <style>
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #0d0b18 radial-gradient(circle at 50% 20%, rgba(124, 92, 252, 0.15) 0%, transparent 60%);
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      color: #fff;
+      padding: 20px;
+      box-sizing: border-box;
+    }
+    .auth-card {
+      width: 100%;
+      max-width: 420px;
+      background: rgba(22, 18, 38, 0.85);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      backdrop-filter: blur(24px);
+      -webkit-backdrop-filter: blur(24px);
+      border-radius: 20px;
+      padding: 36px 30px;
+      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6), 0 0 30px rgba(124, 92, 252, 0.12);
+      box-sizing: border-box;
+    }
+    .auth-brand {
+      text-align: center;
+      margin-bottom: 28px;
+    }
+    .auth-logo {
+      width: 48px;
+      height: 48px;
+      background: linear-gradient(135deg, #7c5cfc, #f75cb2);
+      border-radius: 14px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 24px;
+      box-shadow: 0 8px 24px rgba(124, 92, 252, 0.4);
+      margin-bottom: 12px;
+    }
+    .auth-title {
+      font-size: 24px;
+      font-weight: 800;
+      margin: 0 0 4px;
+      background: linear-gradient(135deg, #fff 40%, #a594fd);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .auth-sub {
+      font-size: 13px;
+      color: #8f8ba3;
+      margin: 0;
+    }
+    .auth-group {
+      margin-bottom: 18px;
+    }
+    .auth-label {
+      display: block;
+      font-size: 12px;
+      font-weight: 600;
+      color: #c4c0d6;
+      margin-bottom: 6px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .auth-input-wrap {
+      position: relative;
+    }
+    .auth-input {
+      width: 100%;
+      box-sizing: border-box;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 12px;
+      padding: 12px 14px;
+      font-size: 14px;
+      color: #fff;
+      font-family: inherit;
+      outline: none;
+      transition: all 0.2s ease;
+    }
+    .auth-input:focus {
+      border-color: #7c5cfc;
+      background: rgba(124, 92, 252, 0.08);
+      box-shadow: 0 0 0 3px rgba(124, 92, 252, 0.2);
+    }
+    .auth-btn {
+      width: 100%;
+      padding: 13px;
+      background: linear-gradient(135deg, #7c5cfc 0%, #6343e8 100%);
+      color: #fff;
+      border: none;
+      border-radius: 12px;
+      font-size: 15px;
+      font-weight: 700;
+      cursor: pointer;
+      font-family: inherit;
+      box-shadow: 0 6px 20px rgba(124, 92, 252, 0.35);
+      transition: all 0.2s ease;
+      margin-top: 6px;
+    }
+    .auth-btn:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 8px 24px rgba(124, 92, 252, 0.5);
+    }
+    .auth-footer {
+      text-align: center;
+      margin-top: 22px;
+      font-size: 13px;
+      color: #8f8ba3;
+    }
+    .auth-footer a {
+      color: #a594fd;
+      text-decoration: none;
+      font-weight: 600;
+    }
+    .auth-footer a:hover {
+      text-decoration: underline;
+    }
+    .auth-flash {
+      padding: 10px 14px;
+      border-radius: 10px;
+      font-size: 13px;
+      margin-bottom: 18px;
+      text-align: center;
+    }
+    .auth-flash.error {
+      background: rgba(247, 92, 92, 0.15);
+      border: 1px solid rgba(247, 92, 92, 0.3);
+      color: #ff8585;
+    }
+    .auth-flash.success {
+      background: rgba(46, 213, 115, 0.15);
+      border: 1px solid rgba(46, 213, 115, 0.3);
+      color: #2ed573;
+    }
+  </style>
+</head>
+<body>
+
+<div class="auth-card">
+  <div class="auth-brand">
+    <div class="auth-logo">✦</div>
+    <h1 class="auth-title">Welcome Back</h1>
+    <p class="auth-sub">Sign in to your private Recall dashboard</p>
+  </div>
+
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      {% for category, message in messages %}
+        <div class="auth-flash {{ category }}">{{ message }}</div>
+      {% endfor %}
+    {% endif %}
+  {% endwith %}
+
+  <form method="POST" action="{{ url_for('login') }}">
+    <input type="hidden" name="next" value="{{ request.args.get('next', '') }}">
+
+    <div class="auth-group">
+      <label class="auth-label">Email or Username</label>
+      <input type="text" name="login_id" class="auth-input" placeholder="e.g. akanksha or you@email.com" required autofocus autocomplete="username">
+    </div>
+
+    <div class="auth-group">
+      <label class="auth-label">Password</label>
+      <input type="password" name="password" class="auth-input" placeholder="Enter your password" required autocomplete="current-password">
+    </div>
+
+    <button type="submit" class="auth-btn">Sign In to Dashboard →</button>
+  </form>
+
+  <div class="auth-footer">
+    Don't have an account? <a href="{{ url_for('register') }}">Create an account</a>
+  </div>
+</div>
+
+</body>
+</html>

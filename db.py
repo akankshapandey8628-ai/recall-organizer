@@ -14,9 +14,22 @@ def init_db():
     conn = get_db()
     c = conn.cursor()
 
+    # Users Table
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS users (
+            id            TEXT PRIMARY KEY,
+            email         TEXT UNIQUE NOT NULL,
+            username      TEXT NOT NULL,
+            password_hash TEXT NOT NULL,
+            created_at    TEXT NOT NULL
+        )
+    """)
+
+    # Items Table
     c.execute("""
         CREATE TABLE IF NOT EXISTS items (
             id           TEXT PRIMARY KEY,
+            user_id      TEXT DEFAULT '',
             type         TEXT NOT NULL,
             title        TEXT NOT NULL,
             description  TEXT,
@@ -35,6 +48,8 @@ def init_db():
     """)
 
     existing_cols = [row[1] for row in c.execute('PRAGMA table_info(items)').fetchall()]
+    if 'user_id' not in existing_cols:
+        c.execute("ALTER TABLE items ADD COLUMN user_id TEXT DEFAULT ''")
     if 'subcategory' not in existing_cols:
         c.execute("ALTER TABLE items ADD COLUMN subcategory TEXT DEFAULT ''")
     if 'entities' not in existing_cols:
@@ -42,10 +57,17 @@ def init_db():
     if 'content_hash' not in existing_cols:
         c.execute("ALTER TABLE items ADD COLUMN content_hash TEXT DEFAULT ''")
 
+    # FTS Virtual Table
     try:
+        # Check if items_fts has user_id
+        fts_cols = [row[1] for row in c.execute('PRAGMA table_info(items_fts)').fetchall()]
+        if 'user_id' not in fts_cols:
+            c.execute("DROP TABLE IF EXISTS items_fts")
+
         c.execute("""
             CREATE VIRTUAL TABLE IF NOT EXISTS items_fts USING fts5(
                 id UNINDEXED,
+                user_id UNINDEXED,
                 title,
                 description,
                 content,
@@ -60,8 +82,8 @@ def init_db():
         if fts_count < items_count:
             c.execute("DELETE FROM items_fts")
             c.execute("""
-                INSERT INTO items_fts (id, title, description, content, tags, category, subcategory, entities)
-                SELECT id, title, description, content, tags, category, subcategory, entities FROM items
+                INSERT INTO items_fts (id, user_id, title, description, content, tags, category, subcategory, entities)
+                SELECT id, user_id, title, description, content, tags, category, subcategory, entities FROM items
             """)
     except Exception as e:
         print(f"FTS init: {e}")
@@ -80,10 +102,11 @@ def sync_item_fts(item_id, conn=None):
         c.execute("DELETE FROM items_fts WHERE id = ?", (item_id,))
         if item:
             c.execute("""
-                INSERT INTO items_fts (id, title, description, content, tags, category, subcategory, entities)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO items_fts (id, user_id, title, description, content, tags, category, subcategory, entities)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 item['id'],
+                item['user_id'] or '',
                 item['title'] or '',
                 item['description'] or '',
                 item['content'] or '',
