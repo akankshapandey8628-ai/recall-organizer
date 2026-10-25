@@ -3,7 +3,7 @@ import re
 import hashlib
 from datetime import datetime
 
-ALLOWED_IMAGE_EXT = {'png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp'}
+ALLOWED_IMAGE_EXT = {'png', 'jpg', 'jpeg', 'jfif', 'gif', 'webp', 'bmp', 'heic', 'heif'}
 ALLOWED_PDF_EXT   = {'pdf'}
 ALLOWED_EXT       = ALLOWED_IMAGE_EXT | ALLOWED_PDF_EXT
 MAX_CONTENT_MB    = 50

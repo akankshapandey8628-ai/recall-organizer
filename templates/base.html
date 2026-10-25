@@ -66,9 +66,9 @@
   </nav>
 
   <div class="sidebar-footer">
-    <a href="{{ url_for('add') }}" class="add-btn">
+    <button type="button" class="add-btn" onclick="openQuickAdd()" style="width:100%;border:none;cursor:pointer;">
       <span style="font-size:18px;">＋</span> Add New Item
-    </a>
+    </button>
   </div>
 </aside>
 
@@ -99,9 +99,9 @@
 
     <div class="topbar-actions" style="flex-shrink:0;">
       {% block topbar_actions %}
-      <a href="{{ url_for('add') }}" class="btn btn-primary btn-sm">
+      <button type="button" class="btn btn-primary btn-sm" onclick="openQuickAdd()" id="topbarAddBtn">
         ＋ New Item
-      </a>
+      </button>
       {% endblock %}
       <button class="mobile-menu-btn" id="mobileMenuBtn" aria-label="Open menu">☰</button>
     </div>
@@ -154,6 +154,223 @@
     </div>
   </div>
 </div>
+
+
+<!-- ── Quick-Add Compact Modal ────────────────────────────────────────────── -->
+<div id="quickAddOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:9999;backdrop-filter:blur(4px);animation:qa-fade-in 0.15s ease;" onclick="if(event.target===this)closeQuickAdd()">
+  <div id="quickAddModal" style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);background:var(--bg-card,#1e1b2e);border:1px solid rgba(124,92,252,0.35);border-radius:16px;width:min(460px,95vw);max-height:90vh;overflow-y:auto;box-shadow:0 24px 80px rgba(0,0,0,0.7);animation:qa-slide-in 0.2s ease;">
+
+    <!-- Header -->
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 20px 0;">
+      <div style="font-size:15px;font-weight:700;color:#fff;">⚡ Quick Add</div>
+      <button type="button" onclick="closeQuickAdd()" style="background:none;border:none;color:#888;font-size:20px;cursor:pointer;line-height:1;padding:0 4px;">✕</button>
+    </div>
+
+    <!-- Type Pills -->
+    <div style="display:flex;gap:6px;padding:12px 20px 8px;flex-wrap:wrap;">
+      <button type="button" id="qa-btn-image" class="qa-type-btn qa-active" onclick="qaSelectType('image')">🖼️ Image</button>
+      <button type="button" id="qa-btn-note"  class="qa-type-btn"           onclick="qaSelectType('note')">📝 Note</button>
+      <button type="button" id="qa-btn-link"  class="qa-type-btn"           onclick="qaSelectType('link')">🔗 Link</button>
+      <button type="button" id="qa-btn-pdf"   class="qa-type-btn"           onclick="qaSelectType('pdf')">📄 PDF</button>
+    </div>
+
+    <!-- Form -->
+    <form method="POST" action="/add" enctype="multipart/form-data" id="qaForm">
+      <input type="hidden" name="type" id="qaTypeInput" value="image"/>
+      <div style="padding:0 20px;">
+
+        <!-- Title -->
+        <input type="text" name="title" id="qaTitle" required autocomplete="off"
+               placeholder="Title…"
+               style="width:100%;box-sizing:border-box;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);border-radius:10px;padding:10px 14px;font-size:14px;color:#fff;outline:none;margin-bottom:10px;"
+               onfocus="this.style.borderColor='rgba(124,92,252,0.7)'" onblur="this.style.borderColor='rgba(255,255,255,0.12)'"/>
+
+        <!-- NOTE content -->
+        <div id="qa-section-note" style="display:none;margin-bottom:10px;">
+          <textarea name="content" id="qaContent" rows="4" placeholder="Write your note here…"
+                    style="width:100%;box-sizing:border-box;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);border-radius:10px;padding:10px 14px;font-size:14px;color:#fff;resize:vertical;outline:none;"
+                    onfocus="this.style.borderColor='rgba(124,92,252,0.7)'" onblur="this.style.borderColor='rgba(255,255,255,0.12)'"></textarea>
+        </div>
+
+        <!-- LINK section -->
+        <div id="qa-section-link" style="display:none;margin-bottom:10px;">
+          <input type="text" name="url" id="qaUrl" placeholder="https://example.com"
+                 style="width:100%;box-sizing:border-box;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);border-radius:10px;padding:10px 14px;font-size:14px;color:#fff;outline:none;"
+                 onfocus="this.style.borderColor='rgba(124,92,252,0.7)'" onblur="this.style.borderColor='rgba(255,255,255,0.12)'"/>
+        </div>
+
+        <!-- IMAGE section -->
+        <div id="qa-section-image" style="margin-bottom:10px;">
+          <div id="qa-img-drop" onclick="document.getElementById('qaImageFile').click()"
+               style="border:2px dashed rgba(124,92,252,0.5);border-radius:10px;padding:20px;text-align:center;cursor:pointer;transition:all 0.2s;"
+               onmouseover="this.style.borderColor='rgba(124,92,252,0.9)'" onmouseout="this.style.borderColor='rgba(124,92,252,0.5)'">
+            <div style="font-size:28px;margin-bottom:4px;">📁</div>
+            <div id="qa-img-label" style="font-size:13px;color:#aaa;">Click to select image (PNG, JPG, WEBP…)</div>
+          </div>
+          <input type="file" name="file" id="qaImageFile" accept=".png,.jpg,.jpeg,.gif,.webp,.bmp,.jfif,.heic,.heif" style="display:none;"
+                 onchange="qaFileSelected(this,'qa-img-label','qa-img-preview')"/>
+          <img id="qa-img-preview" src="" style="display:none;max-width:100%;max-height:140px;border-radius:8px;margin-top:8px;object-fit:contain;"/>
+        </div>
+
+        <!-- PDF section -->
+        <div id="qa-section-pdf" style="display:none;margin-bottom:10px;">
+          <div id="qa-pdf-drop" onclick="document.getElementById('qaPdfFile').click()"
+               style="border:2px dashed rgba(0,210,180,0.5);border-radius:10px;padding:20px;text-align:center;cursor:pointer;transition:all 0.2s;"
+               onmouseover="this.style.borderColor='rgba(0,210,180,0.9)'" onmouseout="this.style.borderColor='rgba(0,210,180,0.5)'">
+            <div style="font-size:28px;margin-bottom:4px;">📄</div>
+            <div id="qa-pdf-label" style="font-size:13px;color:#aaa;">Click to select PDF</div>
+          </div>
+          <input type="file" name="file" id="qaPdfFile" accept=".pdf" style="display:none;"
+                 onchange="qaFileSelected(this,'qa-pdf-label',null)"/>
+        </div>
+
+        <!-- More Options toggle -->
+        <button type="button" id="qaMoreBtn" onclick="toggleQaMore()"
+                style="background:none;border:none;color:#9b8fcc;font-size:12px;cursor:pointer;padding:2px 0;margin-bottom:8px;text-decoration:underline;">
+          ＋ More options (description, tags, category)
+        </button>
+
+        <!-- Collapsible advanced fields -->
+        <div id="qaMoreSection" style="display:none;">
+          <textarea name="description" placeholder="Description (optional)…" rows="2"
+                    style="width:100%;box-sizing:border-box;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);border-radius:10px;padding:10px 14px;font-size:13px;color:#fff;resize:none;outline:none;margin-bottom:8px;"
+                    onfocus="this.style.borderColor='rgba(124,92,252,0.7)'" onblur="this.style.borderColor='rgba(255,255,255,0.12)'"></textarea>
+          <input type="text" name="tags" placeholder="Tags: bill, college, receipt…" autocomplete="off"
+                 style="width:100%;box-sizing:border-box;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);border-radius:10px;padding:10px 14px;font-size:13px;color:#fff;outline:none;margin-bottom:8px;"
+                 onfocus="this.style.borderColor='rgba(124,92,252,0.7)'" onblur="this.style.borderColor='rgba(255,255,255,0.12)'"/>
+          <select name="category"
+                  style="width:100%;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);border-radius:10px;padding:10px 14px;font-size:13px;color:#fff;outline:none;margin-bottom:8px;">
+            <option value="General">General (Auto-detect)</option>
+            <option value="College">College</option>
+            <option value="Finance">Finance</option>
+            <option value="Travel">Travel</option>
+            <option value="Food">Food</option>
+            <option value="Shopping">Shopping</option>
+            <option value="Personal">Personal</option>
+          </select>
+          <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:#aaa;margin-bottom:8px;cursor:pointer;">
+            <input type="checkbox" name="favourite" style="width:16px;height:16px;accent-color:#7c5cfc;"/> ⭐ Mark as Favourite
+          </label>
+        </div>
+
+        <!-- Actions -->
+        <div style="display:flex;gap:10px;padding:4px 0 16px;">
+          <button type="submit" id="qaSaveBtn"
+                  style="flex:1;background:linear-gradient(135deg,#7c5cfc,#5a3fd8);border:none;border-radius:10px;padding:11px;font-size:14px;font-weight:700;color:#fff;cursor:pointer;transition:opacity 0.2s;"
+                  onmouseover="this.style.opacity='0.9'" onmouseout="this.style.opacity='1'">
+            💾 Save
+          </button>
+          <button type="button" onclick="closeQuickAdd()"
+                  style="background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.12);border-radius:10px;padding:11px 18px;font-size:14px;color:#aaa;cursor:pointer;">
+            Cancel
+          </button>
+        </div>
+
+        <!-- Processing indicator -->
+        <div id="qaProcessing" style="display:none;text-align:center;padding:10px;font-size:13px;color:#9b8fcc;margin-top:-8px;margin-bottom:8px;">
+          ⚙️ Analyzing &amp; saving… (AI tagging may take a few seconds)
+        </div>
+      </div>
+    </form>
+  </div>
+</div>
+
+<style>
+/* Quick-Add type pills */
+.qa-type-btn {
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 20px;
+  padding: 5px 13px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #aaa;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.qa-type-btn:hover { background: rgba(124,92,252,0.2); color: #fff; border-color: rgba(124,92,252,0.5); }
+.qa-type-btn.qa-active { background: rgba(124,92,252,0.85); color: #fff; border-color: #7c5cfc; }
+@keyframes qa-fade-in  { from { opacity:0 } to { opacity:1 } }
+@keyframes qa-slide-in { from { opacity:0; transform:translate(-50%,-48%) } to { opacity:1; transform:translate(-50%,-50%) } }
+</style>
+
+<script>
+// ── Quick-Add Modal Logic ──────────────────────────────────────────────────
+function openQuickAdd(type) {
+  document.getElementById('quickAddOverlay').style.display = 'block';
+  document.body.style.overflow = 'hidden';
+  setTimeout(function(){ document.getElementById('qaTitle').focus(); }, 150);
+  qaSelectType(type || 'image');
+}
+
+function closeQuickAdd() {
+  document.getElementById('quickAddOverlay').style.display = 'none';
+  document.body.style.overflow = '';
+  // Reset form
+  document.getElementById('qaForm').reset();
+  qaSelectType('image');
+  document.getElementById('qa-img-preview').style.display = 'none';
+  document.getElementById('qaMoreSection').style.display = 'none';
+  document.getElementById('qaMoreBtn').textContent = '＋ More options (description, tags, category)';
+  document.getElementById('qaProcessing').style.display = 'none';
+  document.getElementById('qaSaveBtn').disabled = false;
+}
+
+function qaSelectType(type) {
+  document.getElementById('qaTypeInput').value = type;
+  ['note','link','image','pdf'].forEach(function(t) {
+    var btn = document.getElementById('qa-btn-' + t);
+    var sec = document.getElementById('qa-section-' + t);
+    if (btn) btn.classList.toggle('qa-active', t === type);
+    if (sec) sec.style.display = (t === type) ? 'block' : 'none';
+  });
+}
+
+function toggleQaMore() {
+  var sec = document.getElementById('qaMoreSection');
+  var btn = document.getElementById('qaMoreBtn');
+  var showing = sec.style.display !== 'none';
+  sec.style.display = showing ? 'none' : 'block';
+  btn.textContent = showing ? '＋ More options (description, tags, category)' : '－ Hide options';
+}
+
+function qaFileSelected(input, labelId, previewId) {
+  if (input.files && input.files[0]) {
+    var f = input.files[0];
+    document.getElementById(labelId).textContent = '✅ ' + f.name;
+    if (previewId) {
+      var reader = new FileReader();
+      reader.onload = function(e) {
+        var img = document.getElementById(previewId);
+        img.src = e.target.result;
+        img.style.display = 'block';
+      };
+      reader.readAsDataURL(f);
+    }
+    // Auto-fill title if blank
+    var titleEl = document.getElementById('qaTitle');
+    if (titleEl && !titleEl.value.trim()) {
+      titleEl.value = f.name.replace(/\.[^/.]+$/, '').replace(/[-_]/g, ' ');
+    }
+  }
+}
+
+// Show processing state on submit
+document.addEventListener('DOMContentLoaded', function() {
+  var form = document.getElementById('qaForm');
+  if (form) {
+    form.addEventListener('submit', function() {
+      document.getElementById('qaSaveBtn').disabled = true;
+      document.getElementById('qaSaveBtn').textContent = '⏳ Saving…';
+      document.getElementById('qaProcessing').style.display = 'block';
+    });
+  }
+  // Close on Escape
+  document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') closeQuickAdd();
+  });
+});
+</script>
 
 <script src="{{ url_for('static', filename='js/main.js') }}?v=3.0"></script>
 {% block extra_js %}{% endblock %}

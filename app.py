@@ -2,6 +2,7 @@ import os
 import uuid
 import json
 import sqlite3
+import concurrent.futures
 from datetime import datetime
 from flask import (
     Flask, render_template, request, redirect, url_for,
@@ -19,6 +20,13 @@ from ocr import extract_text_from_image, extract_text_from_pdf, OCR_AVAILABLE, P
 from classifier import auto_categorize
 from extractor import extract_entities
 from tagger import generate_smart_tags
+
+# ── AI Image Tagger (ai_tagger.py) ──────────────────────────────────────
+try:
+    from ai_tagger import generate_tags as _ai_generate_tags
+except Exception as _ai_import_err:
+    print(f"ai_tagger not loaded: {_ai_import_err}")
+    _ai_generate_tags = None
 
 BASE_DIR   = os.path.dirname(os.path.abspath(__file__))
 UPLOAD_DIR = os.path.join(BASE_DIR, "uploads")
@@ -182,9 +190,34 @@ def items():
 @app.route("/add", methods=["GET", "POST"])
 def add():
     if request.method == "GET":
-        return render_template("add.html")
+        return render_template("add.html", cur_type="note")
 
-    item_type       = request.form.get("type", "note")
+    # ── Smart type detection ──────────────────────────────────────────────────
+    # Use the hidden <input name="type"> as a hint, then verify against actual
+    # submitted data. This makes upload work even if JavaScript didn't fire.
+    _type_hint   = (request.form.get("type", "") or "").strip().lower()
+    _uploaded    = request.files.get("file")
+    _has_file    = _uploaded and _uploaded.filename not in ("", None)
+    _has_url     = bool(request.form.get("url", "").strip())
+
+    if _has_file and _type_hint not in ("image", "pdf"):
+        # User uploaded a file but type hint is wrong — auto-detect from extension
+        _ext = _uploaded.filename.rsplit(".", 1)[-1].lower() if "." in _uploaded.filename else ""
+        from utils import ALLOWED_IMAGE_EXT, ALLOWED_PDF_EXT
+        if _ext in ALLOWED_IMAGE_EXT:
+            _type_hint = "image"
+        elif _ext in ALLOWED_PDF_EXT:
+            _type_hint = "pdf"
+        else:
+            _type_hint = "image"  # fallback
+
+    if _type_hint in ("image", "pdf"):
+        item_type = _type_hint
+    elif _has_url or _type_hint == "link":
+        item_type = "link"
+    else:
+        item_type = _type_hint if _type_hint in ("note", "link") else "note"
+
     title           = request.form.get("title", "").strip()
     description     = request.form.get("description", "").strip()
     user_category   = request.form.get("category", "").strip()
@@ -203,6 +236,7 @@ def add():
     content  = ""
     url      = ""
     filename = ""
+    ai_tags  = []  # populated below for image uploads
 
     if item_type == "note":
         content = request.form.get("content", "").strip()
@@ -217,12 +251,12 @@ def add():
         content = description or ""
 
     elif item_type in ("image", "pdf"):
-        file = request.files.get("file")
+        file = _uploaded
         if not file or file.filename == "":
             flash("Please select a file to upload.", "error")
             return redirect(url_for("add"))
         if not allowed_file(file.filename):
-            flash("File type not allowed.", "error")
+            flash(f"File type not allowed: .{file.filename.rsplit('.', 1)[-1] if '.' in file.filename else '?'}. Supported: PNG, JPG, JPEG, WEBP, BMP, GIF, JFIF, PDF", "error")
             return redirect(url_for("add"))
 
         ext      = file.filename.rsplit(".", 1)[1].lower()
@@ -230,13 +264,24 @@ def add():
         filepath = os.path.join(UPLOAD_DIR, filename)
         file.save(filepath)
 
-        # Run OCR or PDF text extraction
+        # Run OCR and AI tagging in PARALLEL (saves 5-15 seconds on image upload)
         if item_type == "image":
-            content = extract_text_from_image(filepath)
+            with concurrent.futures.ThreadPoolExecutor(max_workers=2) as _pool:
+                _ocr_fut = _pool.submit(extract_text_from_image, filepath)
+                _ai_fut  = _pool.submit(_ai_generate_tags, filepath) if _ai_generate_tags else None
+                content  = _ocr_fut.result()
+                if _ai_fut:
+                    try:
+                        ai_tags = _ai_fut.result() or []
+                    except Exception as _ai_tag_err:
+                        print(f"AI tagging failed (non-fatal): {_ai_tag_err}")
+                        ai_tags = []
         else:
             content = extract_text_from_pdf(filepath)
+
     else:
-        flash("Unknown item type.", "error")
+        # This should never happen after auto-detection, but just in case
+        flash("Could not determine item type. Please click Note / Link / Image / PDF button first.", "error")
         return redirect(url_for("add"))
 
     content = clean_text(content)
@@ -254,9 +299,17 @@ def add():
     text_for_ai = f"{title}\n{description}\n{content}"
     entities = extract_entities(text_for_ai)
 
-    # 3. Smart Tags Generation (combine manual + AI tags)
+    # 3. Smart Tags Generation (combine manual + AI image tags + text smart tags)
     smart_tags = generate_smart_tags(text_for_ai)
-    combined_tags = list(dict.fromkeys(manual_tags + smart_tags))
+    # Deduplicate across all three sources; compare without leading "#"
+    _seen_tags = set()
+    combined_tags = []
+    for _tag in (manual_tags + ai_tags + smart_tags):
+        _norm = _tag.strip().lstrip("#").lower()
+        if _norm and _norm not in _seen_tags:
+            _seen_tags.add(_norm)
+            # Store without "#" prefix so templates render "#tag" correctly
+            combined_tags.append(_tag.strip().lstrip("#").lower())
 
     # 4. Auto Categorization & Subcategorization
     cat_result = auto_categorize(title, f"{description}\n{content}", tags=combined_tags, tm_label=tm_label)
