@@ -159,7 +159,7 @@
     <div class="empty-icon">🌱</div>
     <h3>Nothing saved yet</h3>
     <p>Start by adding a note, link, image, or PDF.</p>
-    <a href="{{ url_for('add') }}" class="btn btn-primary" style="margin-top:16px;">＋ Add Your First Item</a>
+    <button type="button" class="btn btn-primary" style="margin-top:16px;cursor:pointer;" onclick="openQuickAdd('image')">＋ Add Your First Item</button>
   </div>
   {% endif %}
 </section>

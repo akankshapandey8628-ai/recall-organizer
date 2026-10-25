@@ -190,7 +190,8 @@ def items():
 @app.route("/add", methods=["GET", "POST"])
 def add():
     if request.method == "GET":
-        return render_template("add.html", cur_type="note")
+        item_type = request.args.get("type", "image")
+        return redirect(url_for("index", add=1, type=item_type))
 
     # ── Smart type detection ──────────────────────────────────────────────────
     # Use the hidden <input name="type"> as a hint, then verify against actual
@@ -226,8 +227,17 @@ def add():
     tm_label        = request.form.get("tm_label", "").strip()
 
     if not title:
-        flash("Title is required.", "error")
-        return redirect(url_for("add"))
+        if _has_file and _uploaded and _uploaded.filename:
+            base_name = os.path.splitext(_uploaded.filename)[0]
+            title = re.sub(r'[-_]+', ' ', base_name).strip().title() or "Uploaded Image"
+        elif item_type == "link":
+            raw_url = request.form.get("url", "").strip()
+            title = raw_url.split("//")[-1].split("/")[0] if raw_url else "Saved Link"
+        elif item_type == "note":
+            content_preview = request.form.get("content", "").strip()
+            title = (content_preview[:30] + "...") if content_preview else f"Quick Note ({datetime.now().strftime('%d %b')})"
+        else:
+            title = f"{item_type.title()} ({datetime.now().strftime('%d %b')})"
 
     manual_tags = [t.strip().lower() for t in tags_raw.split(",") if t.strip()]
     item_id = str(uuid.uuid4())

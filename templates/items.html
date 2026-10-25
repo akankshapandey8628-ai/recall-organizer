@@ -37,9 +37,7 @@
 {% block page_subtitle %}{{ page_sub }}{% endblock %}
 
 {% block topbar_actions %}
-<a href="{{ add_url }}" class="btn btn-primary btn-sm">
-  {{ add_label }}
-</a>
+<button type="button" class="btn btn-primary btn-sm" onclick="openQuickAdd('{{ selected_type or 'image' }}')">{{ add_label }}</button>
 {% endblock %}
 
 {% block content %}
@@ -120,9 +118,9 @@
     <p style="color:var(--text-secondary);font-size:15px;max-width:440px;margin:0 auto 20px;line-height:1.5;">
       Aapka koi bhi website link ya URL save nahi hai. Kisi bhi link ya bookmark ko save karne ke liye neeche button dabayein:
     </p>
-    <a href="{{ url_for('add', type='link') }}" class="btn btn-primary" style="padding:12px 28px;font-size:15px;">
+    <button type="button" class="btn btn-primary" style="padding:12px 28px;font-size:15px;cursor:pointer;" onclick="openQuickAdd('link')">
       ＋ Attach Your First Link
-    </a>
+    </button>
   </div>
 
   {% elif selected_type == 'image' %}
@@ -132,9 +130,9 @@
     <p style="color:var(--text-secondary);font-size:15px;max-width:440px;margin:0 auto 20px;line-height:1.5;">
       Aapne abhi tak koi photo upload nahi ki hai. Bills, screenshots ya study photos upload karein — Tesseract OCR sab read kar lega!
     </p>
-    <a href="{{ url_for('add', type='image') }}" class="btn btn-primary" style="padding:12px 28px;font-size:15px;">
+    <button type="button" class="btn btn-primary" style="padding:12px 28px;font-size:15px;cursor:pointer;" onclick="openQuickAdd('image')">
       ＋ Upload Your First Photo / Image
-    </a>
+    </button>
   </div>
 
   {% elif selected_type == 'note' %}
@@ -144,9 +142,9 @@
     <p style="color:var(--text-secondary);font-size:15px;max-width:440px;margin:0 auto 20px;line-height:1.5;">
       Aapne koi note nahi banaya hai. Apne thoughts, assignment details ya lecture notes likhein.
     </p>
-    <a href="{{ url_for('add', type='note') }}" class="btn btn-primary" style="padding:12px 28px;font-size:15px;">
+    <button type="button" class="btn btn-primary" style="padding:12px 28px;font-size:15px;cursor:pointer;" onclick="openQuickAdd('note')">
       ＋ Write Your First Note
-    </a>
+    </button>
   </div>
 
   {% elif selected_type == 'pdf' %}
@@ -156,9 +154,9 @@
     <p style="color:var(--text-secondary);font-size:15px;max-width:440px;margin:0 auto 20px;line-height:1.5;">
       Koi bhi PDF file attached nahi hai. Syllabus ya study material PDF upload karein.
     </p>
-    <a href="{{ url_for('add', type='pdf') }}" class="btn btn-primary" style="padding:12px 28px;font-size:15px;">
+    <button type="button" class="btn btn-primary" style="padding:12px 28px;font-size:15px;cursor:pointer;" onclick="openQuickAdd('pdf')">
       ＋ Upload Your First PDF
-    </a>
+    </button>
   </div>
 
   {% elif fav_only %}
